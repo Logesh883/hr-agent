@@ -1,5 +1,6 @@
 import type { Employee, EmployeeRef } from '@hr/contracts';
 import type { Employee as EmployeeModel, Prisma } from '@hr/db';
+import { fromIsoDate, toIsoDate } from '../common/dates.js';
 
 export const employeeRefSelect = {
   id: true,
@@ -17,11 +18,7 @@ export type EmployeeRow = Prisma.EmployeeGetPayload<{
   include: typeof employeeInclude;
 }>;
 
-/** Date column → "YYYY-MM-DD". */
-export const toIsoDate = (d: Date) => d.toISOString().slice(0, 10);
-
-/** "YYYY-MM-DD" → UTC midnight, matching how @db.Date columns round-trip. */
-export const fromIsoDate = (s: string) => new Date(`${s}T00:00:00.000Z`);
+export { fromIsoDate, toIsoDate };
 
 export function toEmployee(row: EmployeeRow): Employee {
   return {

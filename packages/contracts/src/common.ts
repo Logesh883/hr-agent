@@ -26,4 +26,6 @@ export interface ApiError {
   statusCode: number;
   message: string;
   issues?: { path: string; message: string }[];
+  /** Business-rule violations (e.g. leave problems), when the request was well-formed but not allowed. */
+  problems?: { code: string; message: string }[];
 }

@@ -1,11 +1,12 @@
 "use client";
 
-import { Building2, Clock, Users } from "lucide-react";
+import { Building2, CalendarClock, Clock, Users } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { roleLabels } from "@/lib/format";
+import { useLeaveRequests } from "@/lib/leave-queries";
 import { useDepartments, useEmployees } from "@/lib/queries";
 import { useCan, useCurrentUser } from "@/lib/session";
 
@@ -17,8 +18,20 @@ export default function DashboardPage() {
   const employees = useEmployees({ pageSize: 1 }, canReadEmployees);
   const probation = useEmployees({ pageSize: 1, status: "PROBATION" }, canReadEmployees);
   const departments = useDepartments();
+  const canApprove = can("leave:approve");
+  const approvals = useLeaveRequests({ view: "approvals", pageSize: 1 }, canApprove);
 
   const stats = [
+    ...(canApprove
+      ? [
+          {
+            label: "Leave awaiting your approval",
+            value: approvals.data?.total,
+            icon: CalendarClock,
+            href: "/leave?tab=approvals",
+          },
+        ]
+      : []),
     ...(canReadEmployees
       ? [
           { label: "Employees", value: employees.data?.total, icon: Users, href: "/employees" },
@@ -63,7 +76,8 @@ export default function DashboardPage() {
       </div>
       {!canReadEmployees && (
         <p className="mt-6 text-sm text-muted-foreground">
-          Your role can view departments. Employee records are visible to managers and HR.
+          Use Leave to request time off and check your balances. Employee records are visible to
+          managers and HR.
         </p>
       )}
     </>

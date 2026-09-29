@@ -7,6 +7,7 @@ import { AuthModule } from './auth/auth.module.js';
 import { PrismaExceptionFilter } from './common/prisma-exception.filter.js';
 import { DepartmentsModule } from './departments/departments.module.js';
 import { EmployeesModule } from './employees/employees.module.js';
+import { LeaveModule } from './leave/leave.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 
 @Module({
@@ -16,6 +17,7 @@ import { PrismaModule } from './prisma/prisma.module.js';
     AuthModule,
     EmployeesModule,
     DepartmentsModule,
+    LeaveModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_FILTER, useClass: PrismaExceptionFilter }],

@@ -4,7 +4,16 @@ import { paginationQuery } from './common.js';
 export const ACTOR_TYPES = ['USER', 'AI', 'SYSTEM'] as const;
 export type ActorType = (typeof ACTOR_TYPES)[number];
 
-export const AUDIT_ENTITY_TYPES = ['Employee', 'Department'] as const;
+export const AUDIT_ENTITY_TYPES = [
+  'Employee',
+  'Department',
+  'LeaveRequest',
+  'Document',
+  'OnboardingTask',
+  'AttendanceRecord',
+  'AttendanceCorrection',
+  'PolicyDocument',
+] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
 
 export const auditSearchSchema = paginationQuery.extend({

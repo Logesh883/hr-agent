@@ -1,7 +1,7 @@
 "use client";
 
 import type { Permission } from "@hr/contracts";
-import { Building2, LayoutDashboard, LogOut, Moon, Sun, Users } from "lucide-react";
+import { Building2, CalendarDays, LayoutDashboard, LogOut, Moon, Sun, Users } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -24,6 +24,7 @@ import { cn } from "@/lib/utils";
 const nav: { href: string; label: string; icon: typeof Users; permission?: Permission }[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/employees", label: "Employees", icon: Users, permission: "employee:read" },
+  { href: "/leave", label: "Leave", icon: CalendarDays, permission: "leave:request" },
   { href: "/departments", label: "Departments", icon: Building2, permission: "department:read" },
 ];
 

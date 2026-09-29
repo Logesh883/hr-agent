@@ -13,10 +13,14 @@ import { AppModule } from '../src/app.module.js';
 import { AuditService } from '../src/audit/audit.service.js';
 import { DepartmentsService } from '../src/departments/departments.service.js';
 import { EmployeesService } from '../src/employees/employees.service.js';
+import { LeaveService } from '../src/leave/leave.service.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 
 const ID = '5f0d7c3e-8a51-4c47-9d2e-1b6a0f3c9e21';
 const DEPT = '0b8a4d52-6f1e-4c3a-8e7d-2a9c5b1f4e60';
+const LEAVE = '9a3e2f10-4b5c-4d6e-8f70-1a2b3c4d5e6f';
+const ALL: Role[] = ['ADMIN', 'HR_OPS', 'MANAGER', 'EMPLOYEE'];
+const leaveBody = { type: 'CASUAL', startDate: '2027-03-01', endDate: '2027-03-02' };
 
 const employeeBody = {
   firstName: 'Priya',
@@ -49,7 +53,16 @@ const endpoints: {
   { method: 'post', path: '/departments', body: { name: 'Finance', code: 'FIN' }, allowed: ['ADMIN', 'HR_OPS'] },
   { method: 'patch', path: `/departments/${DEPT}`, body: { name: 'Finance & Legal' }, allowed: ['ADMIN', 'HR_OPS'] },
   { method: 'get', path: '/audit-logs', allowed: ['ADMIN', 'HR_OPS'] },
-  { method: 'get', path: '/auth/me', allowed: ['ADMIN', 'HR_OPS', 'MANAGER', 'EMPLOYEE'] },
+  { method: 'get', path: '/auth/me', allowed: ALL },
+  { method: 'get', path: '/leave-requests', allowed: ALL },
+  { method: 'get', path: `/leave-requests/${LEAVE}`, allowed: ALL },
+  { method: 'post', path: '/leave-requests/preview', body: leaveBody, allowed: ALL },
+  { method: 'post', path: '/leave-requests', body: leaveBody, allowed: ALL },
+  { method: 'post', path: `/leave-requests/${LEAVE}/approve`, body: {}, allowed: ['ADMIN', 'HR_OPS', 'MANAGER'] },
+  { method: 'post', path: `/leave-requests/${LEAVE}/reject`, body: { reason: 'Busy' }, allowed: ['ADMIN', 'HR_OPS', 'MANAGER'] },
+  { method: 'post', path: `/leave-requests/${LEAVE}/cancel`, allowed: ALL },
+  { method: 'get', path: `/employees/${ID}/leave-balances`, allowed: ALL },
+  { method: 'get', path: '/holidays', allowed: ALL },
 ];
 
 const userIdFor = (role: Role) =>
@@ -90,6 +103,8 @@ describe('RBAC', () => {
       .useValue(stubService(['search', 'get', 'create', 'update', 'archive', 'reactivate']))
       .overrideProvider(DepartmentsService)
       .useValue(stubService(['list', 'get', 'create', 'update']))
+      .overrideProvider(LeaveService)
+      .useValue(stubService(['list', 'get', 'preview', 'create', 'approve', 'reject', 'cancel', 'balances', 'holidays']))
       .overrideProvider(AuditService)
       .useValue(stubService(['search', 'record']))
       .compile();

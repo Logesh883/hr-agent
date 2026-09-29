@@ -1,5 +1,4 @@
-// HR Operations — core schema (Phase 1: users, employees, departments, audit).
-// Enum values mirror @hr/contracts.
+// HR Operations — core schema. Enum values mirror @hr/contracts.
 
 generator client {
   provider            = "prisma-client"
@@ -43,6 +42,20 @@ enum ActorType {
   SYSTEM
 }
 
+enum LeaveType {
+  ANNUAL
+  SICK
+  CASUAL
+  UNPAID
+}
+
+enum LeaveStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 /// Login account. Linked to an Employee record when the user is also staff.
 model User {
   id           String    @id @default(uuid()) @db.Uuid
@@ -55,6 +68,9 @@ model User {
   employee     Employee? @relation(fields: [employeeId], references: [id])
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
+
+  leaveRequested LeaveRequest[] @relation("LeaveRequestedBy")
+  leaveDecided   LeaveRequest[] @relation("LeaveDecidedBy")
 }
 
 model Department {
@@ -89,6 +105,7 @@ model Employee {
   reports            Employee[]     @relation("ManagerReports")
   managedDepartments Department[]   @relation("DepartmentManager")
   user               User?
+  leaveRequests      LeaveRequest[]
   /// Optimistic locking: incremented on every update.
   version            Int            @default(1)
   createdAt          DateTime       @default(now())
@@ -121,4 +138,37 @@ model AuditLog {
 model Counter {
   name  String @id
   value Int
+}
+
+model LeaveRequest {
+  id              String      @id @default(uuid()) @db.Uuid
+  employeeId      String      @db.Uuid
+  employee        Employee    @relation(fields: [employeeId], references: [id])
+  type            LeaveType
+  startDate       DateTime    @db.Date
+  endDate         DateTime    @db.Date
+  /// Working days at the time of the request (weekends and holidays excluded).
+  days            Int
+  reason          String?
+  status          LeaveStatus @default(PENDING)
+  requestedById   String      @db.Uuid
+  requestedBy     User        @relation("LeaveRequestedBy", fields: [requestedById], references: [id])
+  /// Approver or rejector (spec: approverId).
+  decidedById     String?     @db.Uuid
+  decidedBy       User?       @relation("LeaveDecidedBy", fields: [decidedById], references: [id])
+  decidedAt       DateTime?
+  decisionComment String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([employeeId, startDate])
+  @@index([status])
+}
+
+/// Company-wide non-working days.
+model Holiday {
+  id        String   @id @default(uuid()) @db.Uuid
+  date      DateTime @unique @db.Date
+  name      String
+  createdAt DateTime @default(now())
 }

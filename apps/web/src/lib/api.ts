@@ -7,6 +7,7 @@ export class ApiRequestError extends Error {
     readonly status: number,
     message: string,
     readonly issues: ApiError["issues"] = [],
+    readonly problems: NonNullable<ApiError["problems"]> = [],
   ) {
     super(message);
     this.name = "ApiRequestError";
@@ -53,7 +54,7 @@ export async function apiFetch<T>(
     const message = Array.isArray(error?.message)
       ? error.message.join(", ")
       : (error?.message ?? res.statusText);
-    throw new ApiRequestError(res.status, message, error?.issues);
+    throw new ApiRequestError(res.status, message, error?.issues, error?.problems);
   }
   return (await res.json()) as T;
 }

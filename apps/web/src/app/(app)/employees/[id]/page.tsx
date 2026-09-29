@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { ChangeHistory } from "@/components/employees/change-history";
+import { EmployeeLeave } from "@/components/leave/employee-leave";
 import { PageHeader } from "@/components/page-header";
 import { QueryError } from "@/components/query-error";
 import { StatusBadge } from "@/components/status-badge";
@@ -26,11 +27,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { errorMessage } from "@/lib/api";
 import { employmentTypeLabels, formatDate, fullName } from "@/lib/format";
 import { useEmployee, useEmployees, useSetEmployeeArchived } from "@/lib/queries";
-import { useCan } from "@/lib/session";
+import { useCan, useCurrentUser } from "@/lib/session";
 
 export default function EmployeeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const can = useCan();
+  const user = useCurrentUser();
   const employee = useEmployee(id);
   const reports = useEmployees({ managerId: id, pageSize: 1 });
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
@@ -142,6 +144,10 @@ export default function EmployeeDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {(can("leave:manage") || e.manager?.id === user?.employeeId || e.id === user?.employeeId) && (
+        <EmployeeLeave employeeId={e.id} />
+      )}
 
       {can("audit:read") && <ChangeHistory employeeId={e.id} />}
 
