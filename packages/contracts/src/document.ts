@@ -27,6 +27,11 @@ export const DOCUMENT_TYPE_LABELS: Record<DocumentType, string> = {
   OTHER: 'Other',
 };
 
+/** Label for use mid-sentence: "the offer letter", but "the ID proof" and "the PAN card". */
+export function documentLabelInSentence(type: DocumentType): string {
+  return DOCUMENT_TYPE_LABELS[type].replace(/^([A-Z])(?=[a-z])/, (c) => c.toLowerCase());
+}
+
 /** Every employee needs these verified (onboarding checklist, payroll readiness). */
 export const REQUIRED_DOCUMENT_TYPES: readonly DocumentType[] = [
   'OFFER_LETTER',

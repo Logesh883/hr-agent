@@ -17,6 +17,8 @@ import {
   type EmploymentType,
   type LeaveStatus,
   type LeaveType,
+  type OnboardingAssignee,
+  type OnboardingCategory,
   type Role,
 } from '../src/index.js';
 
@@ -240,12 +242,108 @@ async function main() {
   }
 
   const documentCount = await seedDocuments(employeeIds, userIds);
+  const taskCount = await seedOnboarding(deptIds, employeeIds, userIds);
 
   console.log(
     `Seeded ${departments.length} departments, ${employees.length} employees, ${users.length} users, ` +
-      `${holidays.length} holidays, ${leaveRequests.length} leave requests, ${documentCount} documents.`,
+      `${holidays.length} holidays, ${leaveRequests.length} leave requests, ${documentCount} documents, ` +
+      `${onboardingTemplates.length} onboarding templates, ${taskCount} onboarding tasks.`,
   );
   console.log(`Demo logins (password "${DEMO_PASSWORD}"): ${users.map((u) => u.email).join(', ')}`);
+}
+
+// ---- Onboarding ---------------------------------------------------------------
+
+const onboardingTemplates: {
+  title: string;
+  description?: string;
+  category: OnboardingCategory;
+  assignee: OnboardingAssignee;
+  dueOffsetDays: number;
+  dept?: DeptCode;
+  requiredDocumentType?: DocumentType;
+}[] = [
+  { title: 'Send offer letter and collect the signed copy', category: 'PAPERWORK', assignee: 'HR', dueOffsetDays: -14, requiredDocumentType: 'OFFER_LETTER' },
+  { title: 'Collect ID proof', category: 'DOCUMENTS', assignee: 'EMPLOYEE', dueOffsetDays: -7, requiredDocumentType: 'ID_PROOF' },
+  { title: 'Collect PAN card', category: 'DOCUMENTS', assignee: 'EMPLOYEE', dueOffsetDays: -7, requiredDocumentType: 'PAN_CARD' },
+  { title: 'Collect bank account details', description: 'Needed before the first payroll run.', category: 'DOCUMENTS', assignee: 'EMPLOYEE', dueOffsetDays: -3, requiredDocumentType: 'BANK_DETAILS' },
+  { title: 'Create email and system accounts', category: 'IT_SETUP', assignee: 'IT', dueOffsetDays: -2 },
+  { title: 'Prepare laptop', category: 'IT_SETUP', assignee: 'IT', dueOffsetDays: -1 },
+  { title: 'Send a welcome message to the new hire', category: 'TEAM', assignee: 'MANAGER', dueOffsetDays: -1 },
+  { title: 'Day-one HR orientation', category: 'ORIENTATION', assignee: 'HR', dueOffsetDays: 0 },
+  { title: 'Assign an onboarding buddy', category: 'TEAM', assignee: 'MANAGER', dueOffsetDays: 0 },
+  { title: 'Grant GitHub and cloud access', category: 'IT_SETUP', assignee: 'IT', dueOffsetDays: 0, dept: 'ENG' },
+  { title: 'CRM access and territory handover', category: 'TEAM', assignee: 'MANAGER', dueOffsetDays: 3, dept: 'SAL' },
+  { title: 'First code review walkthrough', category: 'TEAM', assignee: 'MANAGER', dueOffsetDays: 5, dept: 'ENG' },
+  { title: 'Read and acknowledge company policies', category: 'ORIENTATION', assignee: 'EMPLOYEE', dueOffsetDays: 7 },
+  { title: '30-day check-in', description: 'Review goals, fit and any blockers.', category: 'TEAM', assignee: 'MANAGER', dueOffsetDays: 30 },
+];
+
+/** Recent joiners with onboarding underway; tasks due on or before `doneThrough` are complete. */
+const onboardingInProgress: Record<string, string> = {
+  'riya.chatterjee': '2026-12-31',
+  'aisha.khan': '2026-07-10',
+  'rohan.gupta': '2026-07-10',
+  'pooja.verma': '2026-08-02',
+};
+
+async function seedOnboarding(
+  deptIds: Map<DeptCode, string>,
+  employeeIds: Map<string, string>,
+  userIds: Map<string, string>,
+) {
+  const templateIds: string[] = [];
+  for (const [i, t] of onboardingTemplates.entries()) {
+    const id = `6c1f0a2e-0004-4000-8000-${String(i + 1).padStart(12, '0')}`;
+    const data = {
+      title: t.title,
+      description: t.description ?? null,
+      category: t.category,
+      assignee: t.assignee,
+      dueOffsetDays: t.dueOffsetDays,
+      departmentId: t.dept ? deptIds.get(t.dept)! : null,
+      requiredDocumentType: t.requiredDocumentType ?? null,
+      sortOrder: (i + 1) * 10,
+    };
+    await prisma.onboardingTemplateTask.upsert({ where: { id }, update: data, create: { id, ...data } });
+    templateIds.push(id);
+  }
+
+  const hr = userIds.get(HR)!;
+  let n = 0;
+  for (const [key, doneThrough] of Object.entries(onboardingInProgress)) {
+    const e = employees.find((x) => localPart(emailFor(x)) === key)!;
+    const employeeId = employeeIds.get(key)!;
+    const verified = new Set(
+      (await prisma.document.findMany({ where: { employeeId, status: 'VERIFIED' }, select: { type: true } })).map((d) => d.type),
+    );
+    for (const [i, t] of onboardingTemplates.entries()) {
+      if (t.dept && t.dept !== e.dept) continue;
+      n++;
+      const id = `6c1f0a2e-0003-4000-8000-${String(n).padStart(12, '0')}`;
+      const due = new Date(date(e.joiningDate).getTime() + t.dueOffsetDays * 86_400_000);
+      const done = t.requiredDocumentType
+        ? verified.has(t.requiredDocumentType)
+        : due.toISOString().slice(0, 10) <= doneThrough;
+      const data = {
+        employeeId,
+        templateTaskId: templateIds[i],
+        title: t.title,
+        description: t.description ?? null,
+        category: t.category,
+        assignee: t.assignee,
+        dueDate: due,
+        requiredDocumentType: t.requiredDocumentType ?? null,
+        sortOrder: (i + 1) * 10,
+        status: done ? ('DONE' as const) : ('PENDING' as const),
+        completedAt: done ? new Date(due.getTime() + 6 * 3_600_000) : null,
+        completedById: done ? hr : null,
+        notes: null,
+      };
+      await prisma.onboardingTask.upsert({ where: { id }, update: data, create: { id, ...data } });
+    }
+  }
+  return n;
 }
 
 // ---- Documents ---------------------------------------------------------------

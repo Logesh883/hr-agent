@@ -3,12 +3,13 @@
 import type { Employee } from "@hr/contracts";
 import { Archive, ArchiveRestore, ArrowLeft, Pencil, Users } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useState } from "react";
+import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useState } from "react";
 import { toast } from "sonner";
 import { EmployeeDocuments } from "@/components/documents/employee-documents";
 import { ChangeHistory } from "@/components/employees/change-history";
 import { EmployeeLeave } from "@/components/leave/employee-leave";
+import { OnboardingPanel } from "@/components/onboarding/onboarding-panel";
 import { PageHeader } from "@/components/page-header";
 import { QueryError } from "@/components/query-error";
 import { StatusBadge } from "@/components/status-badge";
@@ -24,6 +25,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { errorMessage } from "@/lib/api";
 import { employmentTypeLabels, formatDate, fullName } from "@/lib/format";
@@ -31,7 +33,18 @@ import { useEmployee, useEmployees, useSetEmployeeArchived } from "@/lib/queries
 import { useCan, useCurrentUser } from "@/lib/session";
 
 export default function EmployeeDetailPage() {
+  return (
+    <Suspense>
+      <EmployeeDetail />
+    </Suspense>
+  );
+}
+
+function EmployeeDetail() {
   const { id } = useParams<{ id: string }>();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const can = useCan();
   const user = useCurrentUser();
   const employee = useEmployee(id);
@@ -51,6 +64,18 @@ export default function EmployeeDetailPage() {
   const e = employee.data;
   const archived = e.status === "ARCHIVED";
   const reportCount = reports.data?.total ?? 0;
+  const isSelf = e.id === user?.employeeId;
+  const isManager = !!user?.employeeId && e.manager?.id === user.employeeId;
+
+  const tabs = [
+    { value: "overview", label: "Overview", visible: true },
+    { value: "onboarding", label: "Onboarding", visible: can("onboarding:manage") || isManager || isSelf },
+    { value: "leave", label: "Leave", visible: can("leave:manage") || isManager || isSelf },
+    { value: "documents", label: "Documents", visible: can("document:verify") || isSelf },
+    { value: "history", label: "History", visible: can("audit:read") },
+  ].filter((t) => t.visible);
+  const requested = searchParams.get("tab");
+  const tab = tabs.some((t) => t.value === requested) ? requested! : "overview";
 
   return (
     <>
@@ -92,67 +117,86 @@ export default function EmployeeDetailPage() {
         }
       />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Employment</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Details
-              items={[
-                ["Job title", e.jobTitle],
-                ["Department", e.department?.name],
-                [
-                  "Reports to",
-                  e.manager ? (
-                    <Link href={`/employees/${e.manager.id}`} className="hover:underline">
-                      {fullName(e.manager)}
-                    </Link>
-                  ) : (
-                    "—"
-                  ),
-                ],
-                [
-                  "Direct reports",
-                  reportCount > 0 ? (
-                    <Link href={`/employees?managerId=${e.id}`} className="inline-flex items-center gap-1 hover:underline">
-                      <Users className="size-3.5" />
-                      {reportCount}
-                    </Link>
-                  ) : (
-                    "None"
-                  ),
-                ],
-                ["Employment type", employmentTypeLabels[e.employmentType]],
-                ["Location", e.location],
-                ["Joining date", formatDate(e.joiningDate)],
-              ]}
-            />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Contact</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Details
-              items={[
-                ["Work email", <a key="email" href={`mailto:${e.email}`} className="hover:underline">{e.email}</a>],
-                ["Phone", e.phone ?? "—"],
-                ["Date of birth", formatDate(e.dateOfBirth)],
-              ]}
-            />
-          </CardContent>
-        </Card>
-      </div>
+      <Tabs
+        value={tab}
+        onValueChange={(next) => router.replace(`${pathname}?tab=${next}`, { scroll: false })}
+      >
+        <TabsList className="mb-2">
+          {tabs.map((t) => (
+            <TabsTrigger key={t.value} value={t.value}>
+              {t.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
 
-      {(can("leave:manage") || e.manager?.id === user?.employeeId || e.id === user?.employeeId) && (
-        <EmployeeLeave employeeId={e.id} />
-      )}
-
-      {(can("document:verify") || e.id === user?.employeeId) && <EmployeeDocuments employeeId={e.id} />}
-
-      {can("audit:read") && <ChangeHistory employeeId={e.id} />}
+        <TabsContent value="overview">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Employment</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Details
+                  items={[
+                    ["Job title", e.jobTitle],
+                    ["Department", e.department?.name],
+                    [
+                      "Reports to",
+                      e.manager ? (
+                        <Link href={`/employees/${e.manager.id}`} className="hover:underline">
+                          {fullName(e.manager)}
+                        </Link>
+                      ) : (
+                        "—"
+                      ),
+                    ],
+                    [
+                      "Direct reports",
+                      reportCount > 0 ? (
+                        <Link href={`/employees?managerId=${e.id}`} className="inline-flex items-center gap-1 hover:underline">
+                          <Users className="size-3.5" />
+                          {reportCount}
+                        </Link>
+                      ) : (
+                        "None"
+                      ),
+                    ],
+                    ["Employment type", employmentTypeLabels[e.employmentType]],
+                    ["Location", e.location],
+                    ["Joining date", formatDate(e.joiningDate)],
+                  ]}
+                />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Contact</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Details
+                  items={[
+                    ["Work email", <a key="email" href={`mailto:${e.email}`} className="hover:underline">{e.email}</a>],
+                    ["Phone", e.phone ?? "—"],
+                    ["Date of birth", formatDate(e.dateOfBirth)],
+                  ]}
+                />
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+        <TabsContent value="onboarding">
+          <OnboardingPanel employeeId={e.id} />
+        </TabsContent>
+        <TabsContent value="leave">
+          <EmployeeLeave employeeId={e.id} />
+        </TabsContent>
+        <TabsContent value="documents">
+          <EmployeeDocuments employeeId={e.id} />
+        </TabsContent>
+        <TabsContent value="history">
+          <ChangeHistory employeeId={e.id} />
+        </TabsContent>
+      </Tabs>
 
       <StatusDialog
         employee={e}

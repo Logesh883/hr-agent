@@ -5,4 +5,5 @@ export * from './department.js';
 export * from './document.js';
 export * from './employee.js';
 export * from './leave.js';
+export * from './onboarding.js';
 export * from './permissions.js';

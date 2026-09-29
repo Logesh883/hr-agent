@@ -20,7 +20,7 @@ export default function NewEmployeePage() {
         onSubmit={async (values) => {
           const employee = await createEmployee.mutateAsync(values);
           toast.success(`${employee.firstName} ${employee.lastName} added as ${employee.employeeCode}`);
-          router.push(`/employees/${employee.id}`);
+          router.push(`/employees/${employee.id}?tab=onboarding`);
         }}
       />
     </div>

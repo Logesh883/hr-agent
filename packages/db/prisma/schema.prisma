@@ -74,6 +74,27 @@ enum DocumentStatus {
   FLAGGED
 }
 
+enum OnboardingTaskStatus {
+  PENDING
+  DONE
+  SKIPPED
+}
+
+enum OnboardingCategory {
+  PAPERWORK
+  DOCUMENTS
+  IT_SETUP
+  ORIENTATION
+  TEAM
+}
+
+enum OnboardingAssignee {
+  HR
+  MANAGER
+  EMPLOYEE
+  IT
+}
+
 /// Login account. Linked to an Employee record when the user is also staff.
 model User {
   id           String    @id @default(uuid()) @db.Uuid
@@ -87,50 +108,53 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  leaveRequested    LeaveRequest[] @relation("LeaveRequestedBy")
-  leaveDecided      LeaveRequest[] @relation("LeaveDecidedBy")
-  documentsUploaded Document[]     @relation("DocumentUploadedBy")
-  documentsReviewed Document[]     @relation("DocumentReviewedBy")
+  leaveRequested    LeaveRequest[]   @relation("LeaveRequestedBy")
+  leaveDecided      LeaveRequest[]   @relation("LeaveDecidedBy")
+  documentsUploaded Document[]       @relation("DocumentUploadedBy")
+  documentsReviewed Document[]       @relation("DocumentReviewedBy")
+  onboardingDone    OnboardingTask[]
 }
 
 model Department {
-  id        String           @id @default(uuid()) @db.Uuid
-  name      String           @unique
-  code      String           @unique
-  status    DepartmentStatus @default(ACTIVE)
-  managerId String?          @db.Uuid
-  manager   Employee?        @relation("DepartmentManager", fields: [managerId], references: [id])
-  employees Employee[]       @relation("DepartmentEmployees")
-  createdAt DateTime         @default(now())
-  updatedAt DateTime         @updatedAt
+  id                  String                   @id @default(uuid()) @db.Uuid
+  name                String                   @unique
+  code                String                   @unique
+  status              DepartmentStatus         @default(ACTIVE)
+  managerId           String?                  @db.Uuid
+  manager             Employee?                @relation("DepartmentManager", fields: [managerId], references: [id])
+  employees           Employee[]               @relation("DepartmentEmployees")
+  onboardingTemplates OnboardingTemplateTask[]
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
 }
 
 model Employee {
-  id                 String         @id @default(uuid()) @db.Uuid
-  employeeCode       String         @unique
+  id                 String           @id @default(uuid()) @db.Uuid
+  employeeCode       String           @unique
   firstName          String
   lastName           String
-  email              String         @unique
+  email              String           @unique
   phone              String?
-  dateOfBirth        DateTime?      @db.Date
+  dateOfBirth        DateTime?        @db.Date
   jobTitle           String
   location           String
-  joiningDate        DateTime       @db.Date
+  joiningDate        DateTime         @db.Date
   employmentType     EmploymentType
-  status             EmployeeStatus @default(PROBATION)
-  departmentId       String         @db.Uuid
-  department         Department     @relation("DepartmentEmployees", fields: [departmentId], references: [id])
-  managerId          String?        @db.Uuid
-  manager            Employee?      @relation("ManagerReports", fields: [managerId], references: [id])
-  reports            Employee[]     @relation("ManagerReports")
-  managedDepartments Department[]   @relation("DepartmentManager")
+  status             EmployeeStatus   @default(PROBATION)
+  departmentId       String           @db.Uuid
+  department         Department       @relation("DepartmentEmployees", fields: [departmentId], references: [id])
+  managerId          String?          @db.Uuid
+  manager            Employee?        @relation("ManagerReports", fields: [managerId], references: [id])
+  reports            Employee[]       @relation("ManagerReports")
+  managedDepartments Department[]     @relation("DepartmentManager")
   user               User?
   leaveRequests      LeaveRequest[]
   documents          Document[]
+  onboardingTasks    OnboardingTask[]
   /// Optimistic locking: incremented on every update.
-  version            Int            @default(1)
-  createdAt          DateTime       @default(now())
-  updatedAt          DateTime       @updatedAt
+  version            Int              @default(1)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 
   @@index([departmentId])
   @@index([managerId])
@@ -218,4 +242,44 @@ model Document {
 
   @@index([employeeId])
   @@index([status])
+}
+
+/// Checklist item copied into every new hire's onboarding (department-specific when departmentId is set).
+model OnboardingTemplateTask {
+  id                   String             @id @default(uuid()) @db.Uuid
+  title                String
+  description          String?
+  category             OnboardingCategory
+  assignee             OnboardingAssignee
+  /// Due relative to the joining date (negative = before day one).
+  dueOffsetDays        Int
+  departmentId         String?            @db.Uuid
+  department           Department?        @relation(fields: [departmentId], references: [id])
+  requiredDocumentType DocumentType?
+  sortOrder            Int
+  createdAt            DateTime           @default(now())
+}
+
+/// One onboarding checklist item for one employee (spec: taskType = category).
+model OnboardingTask {
+  id                   String               @id @default(uuid()) @db.Uuid
+  employeeId           String               @db.Uuid
+  employee             Employee             @relation(fields: [employeeId], references: [id])
+  templateTaskId       String?              @db.Uuid
+  title                String
+  description          String?
+  category             OnboardingCategory
+  assignee             OnboardingAssignee
+  dueDate              DateTime             @db.Date
+  status               OnboardingTaskStatus @default(PENDING)
+  requiredDocumentType DocumentType?
+  sortOrder            Int
+  completedAt          DateTime?
+  completedById        String?              @db.Uuid
+  completedBy          User?                @relation(fields: [completedById], references: [id])
+  notes                String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  @@index([employeeId])
 }

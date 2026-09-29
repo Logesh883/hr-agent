@@ -13,7 +13,9 @@ describe('AppController (e2e)', () => {
     }).compile();
 
     app = moduleFixture.createNestApplication();
-    await app.init();
+    // Bind to loopback explicitly: an ephemeral port on :: can collide with another
+    // process listening on 127.0.0.1, sending requests to the wrong server.
+    await app.listen(0, '127.0.0.1');
   });
 
   it('/health (GET)', () => {

@@ -15,6 +15,7 @@ import { DepartmentsService } from '../src/departments/departments.service.js';
 import { DocumentsService } from '../src/documents/documents.service.js';
 import { EmployeesService } from '../src/employees/employees.service.js';
 import { LeaveService } from '../src/leave/leave.service.js';
+import { OnboardingService } from '../src/onboarding/onboarding.service.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 
 const ID = '5f0d7c3e-8a51-4c47-9d2e-1b6a0f3c9e21';
@@ -22,6 +23,7 @@ const DEPT = '0b8a4d52-6f1e-4c3a-8e7d-2a9c5b1f4e60';
 const LEAVE = '9a3e2f10-4b5c-4d6e-8f70-1a2b3c4d5e6f';
 const DOC = '3d7c1b2a-5e6f-4a8b-9c0d-1e2f3a4b5c6d';
 const HR_ONLY: Role[] = ['ADMIN', 'HR_OPS'];
+const TASK = '4e8d2c3b-6f7a-4b9c-8d1e-2f3a4b5c6d7e';
 const ALL: Role[] = ['ADMIN', 'HR_OPS', 'MANAGER', 'EMPLOYEE'];
 const leaveBody = { type: 'CASUAL', startDate: '2027-03-01', endDate: '2027-03-02' };
 
@@ -73,6 +75,10 @@ const endpoints: {
   { method: 'get', path: `/documents/${DOC}/file`, allowed: ALL },
   { method: 'post', path: `/documents/${DOC}/verify`, body: {}, allowed: HR_ONLY },
   { method: 'post', path: `/documents/${DOC}/flag`, body: { note: 'Blurry' }, allowed: HR_ONLY },
+  { method: 'get', path: '/onboarding', allowed: ALL },
+  { method: 'get', path: `/employees/${ID}/onboarding`, allowed: ALL },
+  { method: 'post', path: `/employees/${ID}/onboarding`, allowed: HR_ONLY },
+  { method: 'patch', path: `/onboarding/tasks/${TASK}`, body: { status: 'DONE' }, allowed: ALL },
 ];
 
 const userIdFor = (role: Role) =>
@@ -123,12 +129,16 @@ describe('RBAC', () => {
           data: Buffer.from('%PDF-'),
         }),
       })
+      .overrideProvider(OnboardingService)
+      .useValue(stubService(['list', 'forEmployee', 'start', 'updateTask']))
       .overrideProvider(AuditService)
       .useValue(stubService(['search', 'record']))
       .compile();
 
     app = moduleRef.createNestApplication();
-    await app.init();
+    // Bind to loopback explicitly: an ephemeral port on :: can collide with another
+    // process listening on 127.0.0.1, sending requests to the wrong server.
+    await app.listen(0, '127.0.0.1');
 
     const jwt = app.get(JwtService);
     for (const role of ROLES) {

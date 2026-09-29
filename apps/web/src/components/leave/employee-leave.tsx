@@ -15,7 +15,7 @@ export function EmployeeLeave({ employeeId }: { employeeId: string }) {
   if (balances.error) return null;
 
   return (
-    <Card className="mt-4">
+    <Card>
       <CardHeader>
         <CardTitle>Leave ({year})</CardTitle>
       </CardHeader>

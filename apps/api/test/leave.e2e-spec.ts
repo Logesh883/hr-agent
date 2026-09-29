@@ -36,7 +36,9 @@ describe('Leave (database)', () => {
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
     app = moduleRef.createNestApplication();
-    await app.init();
+    // Bind to loopback explicitly: an ephemeral port on :: can collide with another
+    // process listening on 127.0.0.1, sending requests to the wrong server.
+    await app.listen(0, '127.0.0.1');
     prisma = app.get(PrismaService);
 
     for (const [who, email] of [

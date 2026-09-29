@@ -40,7 +40,7 @@ export function EmployeeDocuments({ employeeId }: { employeeId: string }) {
   const canUpload = can("document:upload");
 
   return (
-    <Card className="mt-4">
+    <Card>
       <CardHeader>
         <CardTitle>Documents</CardTitle>
         {canUpload && (

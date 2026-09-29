@@ -11,6 +11,7 @@ const actionLabels: Record<string, string> = {
   "employee.updated": "Updated",
   "employee.archived": "Archived",
   "employee.reactivated": "Reactivated",
+  "onboarding.started": "Onboarding started",
 };
 
 const fieldLabels: Record<string, string> = {
@@ -27,6 +28,8 @@ const fieldLabels: Record<string, string> = {
   departmentId: "Department",
   managerId: "Manager",
   reason: "Reason",
+  tasks: "Tasks created",
+  alreadyComplete: "Already complete",
 };
 
 /** Audit trail for one employee: who changed what, and when. */
@@ -51,7 +54,7 @@ export function ChangeHistory({ employeeId }: { employeeId: string }) {
   }
 
   return (
-    <Card className="mt-4">
+    <Card>
       <CardHeader>
         <CardTitle>Change history</CardTitle>
       </CardHeader>
