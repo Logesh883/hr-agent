@@ -165,10 +165,10 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 - User text is data, not instructions (a first look at prompt injection).
 
 **Build**
-- [ ] A2.1 Pydantic `ParsedRequest`:
+- [x] A2.1 Pydantic `ParsedRequest` (`apps/ai/intent/schema.py`):
   - **intent**, one of: `onboard_employee`, `update_employee`, `find_employees`, `request_leave`, `approve_leave`, `leave_balance`, `attendance_review`, `attendance_correction`, `document_status`, `policy_question`, `payroll_readiness`, `unknown`.
-  - **entities**: people, dates, job title, department, manager, location, leave type.
-  - **also**: `missing_fields`, `confidence` and `clarifying_question`.
+  - **entities**: people, dates (`joining_date`, `start_date`, `end_date`), job title, department, manager, location, leave type, and document type. Leave and document types use the API's own enum values.
+  - **also**: `missing_fields`, `confidence` and `clarifying_question`. The model returns `ModelParse` (everything except `missing_fields`); code adds `missing_fields` from a per-intent `REQUIRED_FIELDS` table.
 - [ ] A2.2 Intent prompt with few-shot examples taken from the spec's scenarios (e.g. "Onboard Priya as a Software Engineer joining October 12, reporting to Rahul in Bangalore"), with today's date and the user's role injected.
 - [ ] A2.3 Parse, validate, and on failure retry once with the validation error. If it still fails, return `unknown` with a clarifying question.
 - [ ] A2.4 Entity resolution **in code**, not by the LLM: names to employee ids through `GET /employees?q=`, departments by name or code. Ambiguous matches return candidates (two "Rahul"s → ask).

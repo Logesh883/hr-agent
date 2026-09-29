@@ -33,7 +33,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 # Top-level packages; add each new one (tools/, rag/, graphs/, …) here as modules introduce it.
-packages = ["app", "llm", "prompts"]
+packages = ["app", "intent", "llm", "prompts"]
 
 [tool.ruff]
 target-version = "py312"
