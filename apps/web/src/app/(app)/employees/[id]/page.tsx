@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
+import { AttendanceCalendar } from "@/components/attendance/attendance-calendar";
 import { EmployeeDocuments } from "@/components/documents/employee-documents";
 import { ChangeHistory } from "@/components/employees/change-history";
 import { EmployeeLeave } from "@/components/leave/employee-leave";
@@ -71,6 +72,7 @@ function EmployeeDetail() {
     { value: "overview", label: "Overview", visible: true },
     { value: "onboarding", label: "Onboarding", visible: can("onboarding:manage") || isManager || isSelf },
     { value: "leave", label: "Leave", visible: can("leave:manage") || isManager || isSelf },
+    { value: "attendance", label: "Attendance", visible: can("attendance:approve") || isManager || isSelf },
     { value: "documents", label: "Documents", visible: can("document:verify") || isSelf },
     { value: "history", label: "History", visible: can("audit:read") },
   ].filter((t) => t.visible);
@@ -189,6 +191,9 @@ function EmployeeDetail() {
         </TabsContent>
         <TabsContent value="leave">
           <EmployeeLeave employeeId={e.id} />
+        </TabsContent>
+        <TabsContent value="attendance">
+          <AttendanceCalendar employeeId={e.id} />
         </TabsContent>
         <TabsContent value="documents">
           <EmployeeDocuments employeeId={e.id} />

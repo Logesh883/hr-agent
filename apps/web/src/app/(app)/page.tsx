@@ -1,11 +1,12 @@
 "use client";
 
-import { Building2, CalendarClock, ClipboardCheck, Clock, FileSearch, Users } from "lucide-react";
+import { Building2, CalendarClock, ClipboardCheck, Clock, FileSearch, TimerReset, Users } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { roleLabels } from "@/lib/format";
+import { useCorrections } from "@/lib/attendance-queries";
 import { useDocuments } from "@/lib/document-queries";
 import { useLeaveRequests } from "@/lib/leave-queries";
 import { useOnboardingList } from "@/lib/onboarding-queries";
@@ -24,6 +25,8 @@ export default function DashboardPage() {
   const approvals = useLeaveRequests({ view: "approvals", pageSize: 1 }, canApprove);
   const canVerify = can("document:verify");
   const pendingDocs = useDocuments({ status: "PENDING", pageSize: 1 }, canVerify);
+  const canApproveAttendance = can("attendance:approve");
+  const corrections = useCorrections({ status: "PENDING", pageSize: 1 }, canApproveAttendance);
   const seesOnboarding = canReadEmployees && can("onboarding:read");
   const onboarding = useOnboardingList({ state: "active", pageSize: 1 }, seesOnboarding);
 
@@ -45,6 +48,16 @@ export default function DashboardPage() {
             value: pendingDocs.data?.total,
             icon: FileSearch,
             href: "/documents",
+          },
+        ]
+      : []),
+    ...(canApproveAttendance
+      ? [
+          {
+            label: "Attendance corrections to approve",
+            value: corrections.data?.total,
+            icon: TimerReset,
+            href: "/attendance?tab=corrections",
           },
         ]
       : []),

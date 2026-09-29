@@ -20,6 +20,14 @@ const statuses = {
   VERIFIED: { label: "Verified", tone: "positive" },
   FLAGGED: { label: "Flagged", tone: "negative" },
   MISSING: { label: "Missing", tone: "neutral" },
+  PRESENT: { label: "Present", tone: "positive" },
+  HALF_DAY: { label: "Half day", tone: "info" },
+  ABSENT: { label: "Absent", tone: "negative" },
+  ON_LEAVE: { label: "On leave", tone: "info" },
+  HOLIDAY: { label: "Holiday", tone: "neutral" },
+  WEEKEND: { label: "Weekend", tone: "neutral" },
+  NOT_EMPLOYED: { label: "Not joined", tone: "neutral" },
+  UPCOMING: { label: "Upcoming", tone: "neutral" },
 } as const satisfies Record<string, { label: string; tone: keyof typeof tones }>;
 
 export type BadgeStatus = keyof typeof statuses;

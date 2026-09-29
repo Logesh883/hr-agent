@@ -78,3 +78,17 @@ export function addDaysIso(iso: string, days: number): string {
   d.setUTCDate(d.getUTCDate() + days);
   return d.toISOString().slice(0, 10);
 }
+
+/** Most recent weekday before today — the latest complete working day. */
+export function previousWorkday(): string {
+  let d = addDaysIso(todayIso(), -1);
+  while ([0, 6].includes(new Date(`${d}T00:00:00Z`).getUTCDay())) d = addDaysIso(d, -1);
+  return d;
+}
+
+export function formatMinutes(minutes: number | null): string {
+  if (minutes === null) return "—";
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m ? `${h}h ${m}m` : `${h}h`;
+}

@@ -74,6 +74,24 @@ enum DocumentStatus {
   FLAGGED
 }
 
+enum AttendanceStatus {
+  PRESENT
+  HALF_DAY
+  ABSENT
+}
+
+enum AttendanceSource {
+  SYSTEM
+  MANUAL
+  CORRECTION
+}
+
+enum CorrectionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum OnboardingTaskStatus {
   PENDING
   DONE
@@ -108,11 +126,13 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  leaveRequested    LeaveRequest[]   @relation("LeaveRequestedBy")
-  leaveDecided      LeaveRequest[]   @relation("LeaveDecidedBy")
-  documentsUploaded Document[]       @relation("DocumentUploadedBy")
-  documentsReviewed Document[]       @relation("DocumentReviewedBy")
-  onboardingDone    OnboardingTask[]
+  leaveRequested      LeaveRequest[]         @relation("LeaveRequestedBy")
+  leaveDecided        LeaveRequest[]         @relation("LeaveDecidedBy")
+  documentsUploaded   Document[]             @relation("DocumentUploadedBy")
+  documentsReviewed   Document[]             @relation("DocumentReviewedBy")
+  onboardingDone      OnboardingTask[]
+  correctionsProposed AttendanceCorrection[] @relation("CorrectionProposedBy")
+  correctionsReviewed AttendanceCorrection[] @relation("CorrectionReviewedBy")
 }
 
 model Department {
@@ -129,32 +149,34 @@ model Department {
 }
 
 model Employee {
-  id                 String           @id @default(uuid()) @db.Uuid
-  employeeCode       String           @unique
-  firstName          String
-  lastName           String
-  email              String           @unique
-  phone              String?
-  dateOfBirth        DateTime?        @db.Date
-  jobTitle           String
-  location           String
-  joiningDate        DateTime         @db.Date
-  employmentType     EmploymentType
-  status             EmployeeStatus   @default(PROBATION)
-  departmentId       String           @db.Uuid
-  department         Department       @relation("DepartmentEmployees", fields: [departmentId], references: [id])
-  managerId          String?          @db.Uuid
-  manager            Employee?        @relation("ManagerReports", fields: [managerId], references: [id])
-  reports            Employee[]       @relation("ManagerReports")
-  managedDepartments Department[]     @relation("DepartmentManager")
-  user               User?
-  leaveRequests      LeaveRequest[]
-  documents          Document[]
-  onboardingTasks    OnboardingTask[]
+  id                    String                 @id @default(uuid()) @db.Uuid
+  employeeCode          String                 @unique
+  firstName             String
+  lastName              String
+  email                 String                 @unique
+  phone                 String?
+  dateOfBirth           DateTime?              @db.Date
+  jobTitle              String
+  location              String
+  joiningDate           DateTime               @db.Date
+  employmentType        EmploymentType
+  status                EmployeeStatus         @default(PROBATION)
+  departmentId          String                 @db.Uuid
+  department            Department             @relation("DepartmentEmployees", fields: [departmentId], references: [id])
+  managerId             String?                @db.Uuid
+  manager               Employee?              @relation("ManagerReports", fields: [managerId], references: [id])
+  reports               Employee[]             @relation("ManagerReports")
+  managedDepartments    Department[]           @relation("DepartmentManager")
+  user                  User?
+  leaveRequests         LeaveRequest[]
+  documents             Document[]
+  onboardingTasks       OnboardingTask[]
+  attendance            AttendanceRecord[]
+  attendanceCorrections AttendanceCorrection[]
   /// Optimistic locking: incremented on every update.
-  version            Int              @default(1)
-  createdAt          DateTime         @default(now())
-  updatedAt          DateTime         @updatedAt
+  version               Int                    @default(1)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
 
   @@index([departmentId])
   @@index([managerId])
@@ -282,4 +304,47 @@ model OnboardingTask {
   updatedAt            DateTime             @updatedAt
 
   @@index([employeeId])
+}
+
+/// One employee-day of attendance (spec: AttendanceRecord). Times are instants; the company day is Asia/Kolkata.
+model AttendanceRecord {
+  id               String           @id @default(uuid()) @db.Uuid
+  employeeId       String           @db.Uuid
+  employee         Employee         @relation(fields: [employeeId], references: [id])
+  date             DateTime         @db.Date
+  checkIn          DateTime?
+  checkOut         DateTime?
+  status           AttendanceStatus
+  source           AttendanceSource @default(SYSTEM)
+  correctionReason String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  @@unique([employeeId, date])
+  @@index([date])
+}
+
+/// Proposed change to a past attendance record; applied only once approved.
+model AttendanceCorrection {
+  id               String           @id @default(uuid()) @db.Uuid
+  employeeId       String           @db.Uuid
+  employee         Employee         @relation(fields: [employeeId], references: [id])
+  date             DateTime         @db.Date
+  proposedStatus   AttendanceStatus
+  proposedCheckIn  DateTime?
+  proposedCheckOut DateTime?
+  reason           String
+  /// Snapshot of the record when the correction was proposed.
+  previous         Json?
+  status           CorrectionStatus @default(PENDING)
+  proposedById     String           @db.Uuid
+  proposedBy       User             @relation("CorrectionProposedBy", fields: [proposedById], references: [id])
+  reviewedById     String?          @db.Uuid
+  reviewedBy       User?            @relation("CorrectionReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt       DateTime?
+  reviewComment    String?
+  createdAt        DateTime         @default(now())
+
+  @@index([status])
+  @@index([employeeId, date])
 }

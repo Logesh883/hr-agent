@@ -55,3 +55,31 @@ export function formatDate(iso: string): string {
     timeZone: 'UTC',
   });
 }
+
+/** Local "HH:mm" on a company date → instant (Asia/Kolkata is UTC+05:30, no DST). */
+export function toInstant(date: string, time: string): Date {
+  return new Date(`${date}T${time}:00+05:30`);
+}
+
+/** Instant → local "HH:mm". */
+export function localTime(instant: Date): string {
+  return new Intl.DateTimeFormat('en-GB', {
+    timeZone: COMPANY_TIME_ZONE,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(instant);
+}
+
+/** "YYYY-MM" → first and last date of the month. */
+export function monthRange(month: string): { start: string; end: string } {
+  const [y, m] = month.split('-').map(Number);
+  const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { start: `${month}-01`, end: `${month}-${String(last).padStart(2, '0')}` };
+}
+
+/** Minutes between two "HH:mm" times. */
+export function minutesBetween(from: string, to: string): number {
+  const toMinutes = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  return toMinutes(to) - toMinutes(from);
+}

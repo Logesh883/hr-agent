@@ -11,6 +11,7 @@ import bcrypt from 'bcryptjs';
 import { config as loadEnv } from 'dotenv';
 import {
   createPrismaClient,
+  type AttendanceStatus,
   type DocumentStatus,
   type DocumentType,
   type EmployeeStatus,
@@ -243,11 +244,13 @@ async function main() {
 
   const documentCount = await seedDocuments(employeeIds, userIds);
   const taskCount = await seedOnboarding(deptIds, employeeIds, userIds);
+  const attendanceCount = await seedAttendance(employeeIds, userIds, holidayDates);
 
   console.log(
     `Seeded ${departments.length} departments, ${employees.length} employees, ${users.length} users, ` +
       `${holidays.length} holidays, ${leaveRequests.length} leave requests, ${documentCount} documents, ` +
-      `${onboardingTemplates.length} onboarding templates, ${taskCount} onboarding tasks.`,
+      `${onboardingTemplates.length} onboarding templates, ${taskCount} onboarding tasks, ` +
+      `${attendanceCount} attendance records.`,
   );
   console.log(`Demo logins (password "${DEMO_PASSWORD}"): ${users.map((u) => u.email).join(', ')}`);
 }
@@ -344,6 +347,123 @@ async function seedOnboarding(
     }
   }
   return n;
+}
+
+// ---- Attendance ---------------------------------------------------------------
+
+const ATTENDANCE_FROM = '2026-08-03';
+const ATTENDANCE_TO = '2026-09-28';
+
+type Day = { status: AttendanceStatus; checkIn: string | null; checkOut: string | null } | 'NONE';
+
+/** Deliberate anomalies for the demo; everything else is a normal working day. */
+const attendanceOverrides: Record<string, Record<string, Day>> = {
+  'rohan.gupta': { '2026-09-17': 'NONE', '2026-09-18': 'NONE' },
+  // On approved sick leave, but badged in anyway.
+  'karthik.nair': { '2026-09-15': { status: 'PRESENT', checkIn: '09:40', checkOut: '17:55' } },
+  'manoj.yadav': { '2026-09-10': { status: 'ABSENT', checkIn: null, checkOut: null } },
+  'farhan.ali': {
+    '2026-09-08': { status: 'PRESENT', checkIn: '10:48', checkOut: '19:05' },
+    '2026-09-16': { status: 'PRESENT', checkIn: '10:55', checkOut: '19:20' },
+    '2026-09-23': { status: 'PRESENT', checkIn: '10:41', checkOut: '18:50' },
+  },
+  'divya.menon': { '2026-09-24': { status: 'PRESENT', checkIn: '09:25', checkOut: null } },
+  'aisha.khan': { '2026-09-22': { status: 'PRESENT', checkIn: '09:30', checkOut: '12:45' } },
+  'riya.chatterjee': { '2026-09-04': { status: 'HALF_DAY', checkIn: '09:15', checkOut: '13:40' } },
+};
+
+/** Deterministic pseudo-random number in [0, 1) from a string (FNV-1a). */
+function noise(seed: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) {
+    h ^= seed.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0) / 2 ** 32;
+}
+
+const clock = (minutes: number) =>
+  `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+const instant = (day: string, time: string) => new Date(`${day}T${time}:00+05:30`);
+
+async function seedAttendance(
+  employeeIds: Map<string, string>,
+  userIds: Map<string, string>,
+  holidayDates: Set<string>,
+) {
+  const approvedLeave = leaveRequests.filter((l) => l.status === 'APPROVED');
+  const rows: {
+    employeeId: string;
+    date: Date;
+    status: AttendanceStatus;
+    checkIn: Date | null;
+    checkOut: Date | null;
+  }[] = [];
+
+  for (const e of employees) {
+    if (e.status === 'ARCHIVED') continue;
+    const key = localPart(emailFor(e));
+    const employeeId = employeeIds.get(key)!;
+    const overrides = attendanceOverrides[key] ?? {};
+
+    for (let d = date(ATTENDANCE_FROM); d <= date(ATTENDANCE_TO); d = new Date(d.getTime() + 86_400_000)) {
+      const day = d.toISOString().slice(0, 10);
+      const weekday = d.getUTCDay();
+      if (weekday === 0 || weekday === 6 || holidayDates.has(day) || day < e.joiningDate) continue;
+
+      const override = overrides[day];
+      if (override === 'NONE') continue;
+      if (override) {
+        rows.push({
+          employeeId,
+          date: d,
+          status: override.status,
+          checkIn: override.checkIn ? instant(day, override.checkIn) : null,
+          checkOut: override.checkOut ? instant(day, override.checkOut) : null,
+        });
+        continue;
+      }
+      const onLeave = approvedLeave.some((l) => l.employee === key && l.start <= day && l.end >= day);
+      if (onLeave) continue;
+
+      // Normal day: in between 09:00 and 10:15, out 8.5–9.5 hours later.
+      const inAt = 540 + Math.floor(noise(`${key}:${day}:in`) * 75);
+      const outAt = inAt + 510 + Math.floor(noise(`${key}:${day}:out`) * 60);
+      rows.push({ employeeId, date: d, status: 'PRESENT', checkIn: instant(day, clock(inAt)), checkOut: instant(day, clock(outAt)) });
+    }
+  }
+
+  // Replace generated records; corrected records (source CORRECTION) are kept.
+  await prisma.attendanceRecord.deleteMany({
+    where: { source: 'SYSTEM', date: { gte: date(ATTENDANCE_FROM), lte: date(ATTENDANCE_TO) } },
+  });
+  await prisma.attendanceRecord.createMany({ data: rows, skipDuplicates: true });
+
+  const correction = {
+    employeeId: employeeIds.get('rohan.gupta')!,
+    date: date('2026-09-17'),
+    proposedStatus: 'PRESENT' as const,
+    proposedCheckIn: instant('2026-09-17', '09:20'),
+    proposedCheckOut: instant('2026-09-17', '18:10'),
+    reason: 'Badge reader at the Pune office was down; Rohan was in (confirmed with the team).',
+    status: 'PENDING' as const,
+    proposedById: userIds.get(RAHUL)!,
+    reviewedById: null,
+    reviewedAt: null,
+    reviewComment: null,
+  };
+  const correctionId = '6c1f0a2e-0005-4000-8000-000000000001';
+  // Re-seeding resets the demo correction to pending, so drop anything it applied.
+  await prisma.attendanceRecord.deleteMany({
+    where: { employeeId: correction.employeeId, date: correction.date, source: 'CORRECTION' },
+  });
+  await prisma.attendanceCorrection.upsert({
+    where: { id: correctionId },
+    update: correction,
+    create: { id: correctionId, ...correction },
+  });
+
+  return rows.length;
 }
 
 // ---- Documents ---------------------------------------------------------------

@@ -10,6 +10,7 @@ import { ROLES, type Role } from '@hr/contracts';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
+import { AttendanceService } from '../src/attendance/attendance.service.js';
 import { AuditService } from '../src/audit/audit.service.js';
 import { DepartmentsService } from '../src/departments/departments.service.js';
 import { DocumentsService } from '../src/documents/documents.service.js';
@@ -24,6 +25,8 @@ const LEAVE = '9a3e2f10-4b5c-4d6e-8f70-1a2b3c4d5e6f';
 const DOC = '3d7c1b2a-5e6f-4a8b-9c0d-1e2f3a4b5c6d';
 const HR_ONLY: Role[] = ['ADMIN', 'HR_OPS'];
 const TASK = '4e8d2c3b-6f7a-4b9c-8d1e-2f3a4b5c6d7e';
+const CORRECTION = '5f9e3d4c-7a8b-4c0d-9e2f-3a4b5c6d7e8f';
+const correctionBody = { employeeId: ID, date: '2026-09-24', status: 'PRESENT', checkIn: '09:00', checkOut: '18:00', reason: 'Badge reader down' };
 const ALL: Role[] = ['ADMIN', 'HR_OPS', 'MANAGER', 'EMPLOYEE'];
 const leaveBody = { type: 'CASUAL', startDate: '2027-03-01', endDate: '2027-03-02' };
 
@@ -79,6 +82,12 @@ const endpoints: {
   { method: 'get', path: `/employees/${ID}/onboarding`, allowed: ALL },
   { method: 'post', path: `/employees/${ID}/onboarding`, allowed: HR_ONLY },
   { method: 'patch', path: `/onboarding/tasks/${TASK}`, body: { status: 'DONE' }, allowed: ALL },
+  { method: 'get', path: '/attendance/daily?date=2026-09-24', allowed: ALL },
+  { method: 'get', path: '/attendance/monthly?month=2026-09', allowed: ALL },
+  { method: 'get', path: '/attendance/corrections', allowed: ALL },
+  { method: 'post', path: '/attendance/corrections', body: correctionBody, allowed: ['ADMIN', 'HR_OPS', 'MANAGER'] },
+  { method: 'post', path: `/attendance/corrections/${CORRECTION}/approve`, body: {}, allowed: HR_ONLY },
+  { method: 'post', path: `/attendance/corrections/${CORRECTION}/reject`, body: { reason: 'No' }, allowed: HR_ONLY },
 ];
 
 const userIdFor = (role: Role) =>
@@ -131,6 +140,8 @@ describe('RBAC', () => {
       })
       .overrideProvider(OnboardingService)
       .useValue(stubService(['list', 'forEmployee', 'start', 'updateTask']))
+      .overrideProvider(AttendanceService)
+      .useValue(stubService(['daily', 'monthly', 'corrections', 'propose', 'approve', 'reject']))
       .overrideProvider(AuditService)
       .useValue(stubService(['search', 'record']))
       .compile();
