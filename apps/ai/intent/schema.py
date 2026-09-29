@@ -194,8 +194,14 @@ class ParsedRequest(ModelParse):
 
     @property
     def needs_clarification(self) -> bool:
+        """Ask before acting if code finds a gap *or* the model had a question.
+
+        When they disagree, asking is the safe side: an extra question costs less than a
+        wrong action. The prompt keeps the model from asking needlessly.
+        """
         return (
             self.intent is Intent.UNKNOWN
             or bool(self.missing_fields)
             or self.confidence < MIN_CONFIDENCE
+            or self.clarifying_question is not None
         )

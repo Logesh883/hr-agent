@@ -100,6 +100,20 @@ def test_empty_people_counts_as_missing_only_where_required() -> None:
     assert balance.missing_fields == []  # "my balance": the requester
 
 
+def test_a_question_from_the_model_means_ask_even_when_nothing_is_missing() -> None:
+    parse = ModelParse(
+        intent=Intent.APPROVE_LEAVE,
+        entities=Entities(people=["Sneha"]),
+        confidence=0.9,
+        clarifying_question="Which dates?",
+    )
+
+    parsed = ParsedRequest.from_model(parse)
+
+    assert parsed.missing_fields == []
+    assert parsed.needs_clarification
+
+
 @pytest.mark.parametrize(
     ("intent", "confidence", "expected"),
     [

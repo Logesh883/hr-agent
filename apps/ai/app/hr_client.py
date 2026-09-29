@@ -5,6 +5,7 @@ and audit apply exactly as if the user had clicked in the web app. Error bodies 
 API's `ApiError` contract (packages/contracts/src/common.ts) and become `HrApiError`.
 """
 
+from datetime import date
 from typing import Any, Self
 
 import httpx
@@ -100,6 +101,36 @@ class LoginResponse(ApiModel):
     user: SessionUser
 
 
+class EmployeeRef(ApiModel):
+    id: str
+    employee_code: str
+    first_name: str
+    last_name: str
+
+    @property
+    def full_name(self) -> str:
+        return f"{self.first_name} {self.last_name}"
+
+
+class Employee(EmployeeRef):
+    """The fields the agent uses from the API's Employee; the rest is ignored."""
+
+    job_title: str
+    location: str
+    status: str
+
+
+class LeaveRequest(ApiModel):
+    id: str
+    employee: EmployeeRef
+    type: str
+    start_date: date
+    end_date: date
+    days: float
+    status: str
+    can_decide: bool
+
+
 class HrApiClient:
     """Calls the HR API as one user.
 
@@ -152,3 +183,27 @@ class HrApiClient:
 
     async def me(self) -> SessionUser:
         return SessionUser.model_validate(await self.get("/auth/me"))
+
+    async def search_employees(self, q: str, *, page_size: int = 20) -> list[Employee]:
+        """Active and probation employees whose name, email or code contains every word of q."""
+        data = await self.get("/employees", params={"q": q, "pageSize": page_size})
+        return [Employee.model_validate(item) for item in data["items"]]
+
+    async def pending_leave_to_decide(
+        self,
+        *,
+        employee_id: str | None = None,
+        leave_type: str | None = None,
+        overlapping: tuple[date, date] | None = None,
+    ) -> list[LeaveRequest]:
+        """Pending requests the caller may approve or reject (`view=approvals`), oldest start
+        first. `overlapping` keeps requests that touch that date range."""
+        params: dict[str, Any] = {"view": "approvals", "pageSize": 100}
+        if employee_id:
+            params["employeeId"] = employee_id
+        if leave_type:
+            params["type"] = leave_type
+        if overlapping:
+            params["from"], params["to"] = (d.isoformat() for d in overlapping)
+        data = await self.get("/leave-requests", params=params)
+        return [LeaveRequest.model_validate(item) for item in data["items"]]

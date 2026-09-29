@@ -3,15 +3,29 @@
 uv run hr-ai serve --reload            # the API on AI_HOST:AI_PORT
 uv run hr-ai chat "What is LOP?"       # one message to the configured model
 uv run hr-ai models                    # model ids the configured provider offers
+uv run hr-ai parse "Approve Sneha's leave" --role MANAGER   # intent + entities
+uv run hr-ai parse "Approve Sneha's leave" --login manager@hr.local   # + which request
 """
 
 import argparse
 import asyncio
+import getpass
+import os
 import sys
+from datetime import date
+from typing import cast, get_args
 
+import httpx
+from pydantic import ValidationError
+
+from app.hr_client import HrApiClient, HrApiError, HrApiUnavailableError
 from app.llm_routes import build_messages
 from app.log import configure_logging
 from app.settings import get_settings
+from intent.leave_approval import choose_leave_to_approve
+from intent.parser import parse_request
+from intent.prompt import Role
+from intent.schema import Intent
 from llm.base import LLMError
 from llm.factory import LLMConfigError, create_llm_client
 from llm.openai_compat import OpenAICompatibleClient
@@ -36,9 +50,23 @@ def main(argv: list[str] | None = None) -> None:
     models = commands.add_parser("models", help="list the provider's model ids")
     models.add_argument("filter", nargs="?", default="", help="only ids containing this text")
 
+    parse = commands.add_parser("parse", help="classify one HR request: intent + entities")
+    parse.add_argument("request")
+    parse.add_argument("--role", choices=get_args(Role), default="HR_OPS")
+    parse.add_argument("--today", type=date.fromisoformat, help="YYYY-MM-DD; default: today")
+    parse.add_argument("--model", help="override LLM_MODEL")
+    parse.add_argument(
+        "--login",
+        metavar="EMAIL",
+        help="sign in to the HR API as this user (password from HR_PASSWORD or a prompt); "
+        "uses their role, and for approvals looks up their pending leave",
+    )
+
     args = parser.parse_args(argv)
     if args.command == "serve":
         _serve(reload=args.reload)
+    elif args.command == "parse":
+        sys.exit(asyncio.run(_parse(args)))
     elif args.command == "models":
         sys.exit(asyncio.run(_models(args.filter)))
     else:
@@ -91,6 +119,49 @@ async def _chat(args: argparse.Namespace) -> int:
         return 1
     finally:
         await llm.aclose()
+    return 0
+
+
+async def _parse(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    if args.model:
+        settings = settings.model_copy(update={"llm_model": args.model})
+    configure_logging(settings.log_level)
+    try:
+        llm = create_llm_client(settings)
+    except LLMConfigError as error:
+        print(error, file=sys.stderr)
+        return 2
+    async with httpx.AsyncClient(
+        base_url=settings.hr_api_url, timeout=settings.hr_api_timeout
+    ) as http:
+        try:
+            hr: HrApiClient | None = None
+            role: Role = args.role
+            if args.login:
+                # Act as that user: their role in the prompt, their permissions on lookups.
+                password = os.environ.get("HR_PASSWORD") or getpass.getpass(
+                    f"Password for {args.login}: "
+                )
+                login = await HrApiClient(http).login(args.login, password)
+                hr = HrApiClient(http, login.access_token)
+                role = cast(Role, login.user.role)
+                print(f"signed in as {login.user.name} ({role})", file=sys.stderr)
+
+            parsed = await parse_request(
+                llm, args.request, today=args.today or date.today(), role=role
+            )
+            print(parsed.model_dump_json(indent=2))
+            print(f"needs_clarification: {parsed.needs_clarification}", file=sys.stderr)
+
+            if hr and parsed.intent is Intent.APPROVE_LEAVE:
+                choice = await choose_leave_to_approve(hr, parsed)
+                print(f"\n[{choice.outcome}]\n{choice.message}")
+        except (LLMError, ValidationError, HrApiError, HrApiUnavailableError) as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
+        finally:
+            await llm.aclose()
     return 0
 
 
