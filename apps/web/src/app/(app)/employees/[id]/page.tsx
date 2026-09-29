@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import { EmployeeDocuments } from "@/components/documents/employee-documents";
 import { ChangeHistory } from "@/components/employees/change-history";
 import { EmployeeLeave } from "@/components/leave/employee-leave";
 import { PageHeader } from "@/components/page-header";
@@ -148,6 +149,8 @@ export default function EmployeeDetailPage() {
       {(can("leave:manage") || e.manager?.id === user?.employeeId || e.id === user?.employeeId) && (
         <EmployeeLeave employeeId={e.id} />
       )}
+
+      {(can("document:verify") || e.id === user?.employeeId) && <EmployeeDocuments employeeId={e.id} />}
 
       {can("audit:read") && <ChangeHistory employeeId={e.id} />}
 

@@ -56,6 +56,24 @@ enum LeaveStatus {
   CANCELLED
 }
 
+enum DocumentType {
+  OFFER_LETTER
+  ID_PROOF
+  ADDRESS_PROOF
+  PAN_CARD
+  BANK_DETAILS
+  EDUCATION_CERTIFICATE
+  EXPERIENCE_LETTER
+  PHOTO
+  OTHER
+}
+
+enum DocumentStatus {
+  PENDING
+  VERIFIED
+  FLAGGED
+}
+
 /// Login account. Linked to an Employee record when the user is also staff.
 model User {
   id           String    @id @default(uuid()) @db.Uuid
@@ -69,8 +87,10 @@ model User {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  leaveRequested LeaveRequest[] @relation("LeaveRequestedBy")
-  leaveDecided   LeaveRequest[] @relation("LeaveDecidedBy")
+  leaveRequested    LeaveRequest[] @relation("LeaveRequestedBy")
+  leaveDecided      LeaveRequest[] @relation("LeaveDecidedBy")
+  documentsUploaded Document[]     @relation("DocumentUploadedBy")
+  documentsReviewed Document[]     @relation("DocumentReviewedBy")
 }
 
 model Department {
@@ -106,6 +126,7 @@ model Employee {
   managedDepartments Department[]   @relation("DepartmentManager")
   user               User?
   leaveRequests      LeaveRequest[]
+  documents          Document[]
   /// Optimistic locking: incremented on every update.
   version            Int            @default(1)
   createdAt          DateTime       @default(now())
@@ -171,4 +192,30 @@ model Holiday {
   date      DateTime @unique @db.Date
   name      String
   createdAt DateTime @default(now())
+}
+
+/// Employee document. The file lives in object storage under storageKey.
+model Document {
+  id           String         @id @default(uuid()) @db.Uuid
+  employeeId   String         @db.Uuid
+  employee     Employee       @relation(fields: [employeeId], references: [id])
+  type         DocumentType
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  storageKey   String         @unique
+  status       DocumentStatus @default(PENDING)
+  uploadedById String         @db.Uuid
+  uploadedBy   User           @relation("DocumentUploadedBy", fields: [uploadedById], references: [id])
+  uploadedAt   DateTime       @default(now())
+  /// Last verify/flag decision (spec: verifiedAt).
+  reviewedById String?        @db.Uuid
+  reviewedBy   User?          @relation("DocumentReviewedBy", fields: [reviewedById], references: [id])
+  reviewedAt   DateTime?
+  reviewNote   String?
+  /// Structured fields extracted by the AI agent's OCR pipeline (AI scope).
+  extraction   Json?
+
+  @@index([employeeId])
+  @@index([status])
 }

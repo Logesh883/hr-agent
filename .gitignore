@@ -24,3 +24,6 @@ __pycache__/
 
 # Prisma generated client (packages/db)
 packages/db/src/generated/
+
+# Uploaded files (local storage driver)
+storage/

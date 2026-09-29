@@ -12,6 +12,7 @@ import { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
 import { AuditService } from '../src/audit/audit.service.js';
 import { DepartmentsService } from '../src/departments/departments.service.js';
+import { DocumentsService } from '../src/documents/documents.service.js';
 import { EmployeesService } from '../src/employees/employees.service.js';
 import { LeaveService } from '../src/leave/leave.service.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
@@ -19,6 +20,8 @@ import { PrismaService } from '../src/prisma/prisma.service.js';
 const ID = '5f0d7c3e-8a51-4c47-9d2e-1b6a0f3c9e21';
 const DEPT = '0b8a4d52-6f1e-4c3a-8e7d-2a9c5b1f4e60';
 const LEAVE = '9a3e2f10-4b5c-4d6e-8f70-1a2b3c4d5e6f';
+const DOC = '3d7c1b2a-5e6f-4a8b-9c0d-1e2f3a4b5c6d';
+const HR_ONLY: Role[] = ['ADMIN', 'HR_OPS'];
 const ALL: Role[] = ['ADMIN', 'HR_OPS', 'MANAGER', 'EMPLOYEE'];
 const leaveBody = { type: 'CASUAL', startDate: '2027-03-01', endDate: '2027-03-02' };
 
@@ -63,6 +66,13 @@ const endpoints: {
   { method: 'post', path: `/leave-requests/${LEAVE}/cancel`, allowed: ALL },
   { method: 'get', path: `/employees/${ID}/leave-balances`, allowed: ALL },
   { method: 'get', path: '/holidays', allowed: ALL },
+  { method: 'get', path: '/documents', allowed: ALL },
+  { method: 'get', path: `/employees/${ID}/documents`, allowed: ALL },
+  { method: 'post', path: `/employees/${ID}/documents`, body: { type: 'PAN_CARD' }, allowed: ALL },
+  { method: 'get', path: `/documents/${DOC}`, allowed: ALL },
+  { method: 'get', path: `/documents/${DOC}/file`, allowed: ALL },
+  { method: 'post', path: `/documents/${DOC}/verify`, body: {}, allowed: HR_ONLY },
+  { method: 'post', path: `/documents/${DOC}/flag`, body: { note: 'Blurry' }, allowed: HR_ONLY },
 ];
 
 const userIdFor = (role: Role) =>
@@ -105,6 +115,14 @@ describe('RBAC', () => {
       .useValue(stubService(['list', 'get', 'create', 'update']))
       .overrideProvider(LeaveService)
       .useValue(stubService(['list', 'get', 'preview', 'create', 'approve', 'reject', 'cancel', 'balances', 'holidays']))
+      .overrideProvider(DocumentsService)
+      .useValue({
+        ...stubService(['search', 'forEmployee', 'get', 'upload', 'review']),
+        readFile: vi.fn().mockResolvedValue({
+          doc: { mimeType: 'application/pdf', fileName: 'x.pdf' },
+          data: Buffer.from('%PDF-'),
+        }),
+      })
       .overrideProvider(AuditService)
       .useValue(stubService(['search', 'record']))
       .compile();

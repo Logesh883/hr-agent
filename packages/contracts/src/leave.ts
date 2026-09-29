@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isoDate, paginationQuery } from './common.js';
+import { isoDate, paginationQuery, type UserRef } from './common.js';
 import type { EmployeeRef } from './employee.js';
 
 export const LEAVE_TYPES = ['ANNUAL', 'SICK', 'CASUAL', 'UNPAID'] as const;
@@ -107,11 +107,6 @@ export interface LeavePreview {
   balance: LeaveBalance | null;
   balanceAfter: number | null;
   problems: LeaveProblem[];
-}
-
-export interface UserRef {
-  id: string;
-  name: string;
 }
 
 export interface LeaveRequest {

@@ -1,11 +1,12 @@
 "use client";
 
-import { Building2, CalendarClock, Clock, Users } from "lucide-react";
+import { Building2, CalendarClock, Clock, FileSearch, Users } from "lucide-react";
 import Link from "next/link";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { roleLabels } from "@/lib/format";
+import { useDocuments } from "@/lib/document-queries";
 import { useLeaveRequests } from "@/lib/leave-queries";
 import { useDepartments, useEmployees } from "@/lib/queries";
 import { useCan, useCurrentUser } from "@/lib/session";
@@ -20,6 +21,8 @@ export default function DashboardPage() {
   const departments = useDepartments();
   const canApprove = can("leave:approve");
   const approvals = useLeaveRequests({ view: "approvals", pageSize: 1 }, canApprove);
+  const canVerify = can("document:verify");
+  const pendingDocs = useDocuments({ status: "PENDING", pageSize: 1 }, canVerify);
 
   const stats = [
     ...(canApprove
@@ -29,6 +32,16 @@ export default function DashboardPage() {
             value: approvals.data?.total,
             icon: CalendarClock,
             href: "/leave?tab=approvals",
+          },
+        ]
+      : []),
+    ...(canVerify
+      ? [
+          {
+            label: "Documents to verify",
+            value: pendingDocs.data?.total,
+            icon: FileSearch,
+            href: "/documents",
           },
         ]
       : []),

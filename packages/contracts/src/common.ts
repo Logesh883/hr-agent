@@ -29,3 +29,9 @@ export interface ApiError {
   /** Business-rule violations (e.g. leave problems), when the request was well-formed but not allowed. */
   problems?: { code: string; message: string }[];
 }
+
+/** A login account, e.g. who requested or approved something. */
+export interface UserRef {
+  id: string;
+  name: string;
+}

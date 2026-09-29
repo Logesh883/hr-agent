@@ -1,15 +1,18 @@
 /**
  * Demo seed: 4 departments, 20 employees, one login per role, a holiday
- * calendar, and leave requests in every status.
+ * calendar, leave requests in every status, and employee documents (demo PDFs).
  * Idempotent — safe to re-run; records are upserted by their unique keys.
  *
  * Priya is intentionally absent: "Onboard Priya…" is the headline AI demo.
  */
+import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import bcrypt from 'bcryptjs';
 import { config as loadEnv } from 'dotenv';
 import {
   createPrismaClient,
+  type DocumentStatus,
+  type DocumentType,
   type EmployeeStatus,
   type EmploymentType,
   type LeaveStatus,
@@ -236,11 +239,137 @@ async function main() {
     await prisma.leaveRequest.upsert({ where: { id: l.id }, update: data, create: { id: l.id, ...data } });
   }
 
+  const documentCount = await seedDocuments(employeeIds, userIds);
+
   console.log(
     `Seeded ${departments.length} departments, ${employees.length} employees, ${users.length} users, ` +
-      `${holidays.length} holidays, ${leaveRequests.length} leave requests.`,
+      `${holidays.length} holidays, ${leaveRequests.length} leave requests, ${documentCount} documents.`,
   );
   console.log(`Demo logins (password "${DEMO_PASSWORD}"): ${users.map((u) => u.email).join(', ')}`);
+}
+
+// ---- Documents ---------------------------------------------------------------
+
+const REQUIRED: DocumentType[] = ['OFFER_LETTER', 'ID_PROOF', 'PAN_CARD', 'BANK_DETAILS'];
+
+/** Per-employee exceptions to "all required documents uploaded and verified". */
+const documentOverrides: Record<string, Partial<Record<DocumentType, DocumentStatus | 'MISSING'>>> = {
+  'rohan.gupta': { ID_PROOF: 'PENDING', PAN_CARD: 'PENDING', BANK_DETAILS: 'MISSING' },
+  'aisha.khan': { PAN_CARD: 'PENDING', BANK_DETAILS: 'MISSING' },
+  'pooja.verma': { OFFER_LETTER: 'PENDING', ID_PROOF: 'MISSING', PAN_CARD: 'MISSING', BANK_DETAILS: 'MISSING' },
+  'riya.chatterjee': { BANK_DETAILS: 'PENDING' },
+  'kavya.shetty': { BANK_DETAILS: 'FLAGGED' },
+};
+
+const docLabels: Record<DocumentType, string> = {
+  OFFER_LETTER: 'Offer Letter',
+  ID_PROOF: 'Identity Proof (Aadhaar)',
+  ADDRESS_PROOF: 'Address Proof',
+  PAN_CARD: 'PAN Card',
+  BANK_DETAILS: 'Bank Account Details',
+  EDUCATION_CERTIFICATE: 'Education Certificate',
+  EXPERIENCE_LETTER: 'Experience Letter',
+  PHOTO: 'Photo',
+  OTHER: 'Document',
+};
+
+async function seedDocuments(employeeIds: Map<string, string>, userIds: Map<string, string>) {
+  const storageRoot = path.resolve(
+    import.meta.dirname,
+    '../../..',
+    process.env.STORAGE_DIR ?? 'storage',
+  );
+  const hr = userIds.get(HR)!;
+  const admin = userIds.get('admin@hr.local')!;
+  let n = 0;
+
+  for (const e of employees) {
+    const key = localPart(emailFor(e));
+    const employeeId = employeeIds.get(key)!;
+    const name = `${e.firstName} ${e.lastName}`;
+    for (const type of REQUIRED) {
+      n++;
+      const status = documentOverrides[key]?.[type] ?? 'VERIFIED';
+      if (status === 'MISSING') continue;
+
+      const id = `6c1f0a2e-0002-4000-8000-${String(n).padStart(12, '0')}`;
+      const storageKey = `documents/${employeeId}/${id}.pdf`;
+      const pdf = demoPdf(docLabels[type], documentLines(type, e, n));
+      await mkdir(path.join(storageRoot, path.dirname(storageKey)), { recursive: true });
+      await writeFile(path.join(storageRoot, storageKey), pdf);
+
+      const uploadedAt = new Date(date(e.joiningDate).getTime() - 7 * 86_400_000 + 4.5 * 3_600_000);
+      const reviewed = status !== 'PENDING';
+      const data = {
+        employeeId,
+        type,
+        fileName: `${docLabels[type].split(' (')[0].replace(/ /g, '_')}_${e.firstName}_${e.lastName}.pdf`,
+        mimeType: 'application/pdf',
+        sizeBytes: pdf.length,
+        storageKey,
+        status,
+        uploadedById: hr,
+        uploadedAt,
+        // Nobody reviews their own documents: HR's own are reviewed by the admin.
+        reviewedById: reviewed ? (key === 'lakshmi.pillai' ? admin : hr) : null,
+        reviewedAt: reviewed ? new Date(uploadedAt.getTime() + 86_400_000) : null,
+        reviewNote:
+          status === 'FLAGGED'
+            ? `Account holder name "${e.firstName} S." doesn't match the employee record "${name}".`
+            : null,
+      };
+      await prisma.document.upsert({ where: { id }, update: data, create: { id, ...data } });
+    }
+  }
+  return prisma.document.count();
+}
+
+function documentLines(type: DocumentType, e: SeedEmployee, n: number): string[] {
+  const name = `${e.firstName} ${e.lastName}`;
+  const pan = `${e.lastName.slice(0, 3).toUpperCase()}P${e.firstName[0]}${String(1000 + n)}${e.lastName[0]}`;
+  switch (type) {
+    case 'OFFER_LETTER':
+      return [`Candidate: ${name}`, `Position: ${e.jobTitle}`, `Location: ${e.location}`, `Date of joining: ${e.joiningDate}`];
+    case 'ID_PROOF':
+      return [`Name: ${name}`, `Date of birth: ${e.dateOfBirth}`, `ID number: XXXX XXXX ${String(4000 + n)}`];
+    case 'PAN_CARD':
+      return [`Name: ${name}`, `Date of birth: ${e.dateOfBirth}`, `PAN: ${pan}`];
+    case 'BANK_DETAILS': {
+      const holder = documentOverrides[localPart(emailFor(e))]?.BANK_DETAILS === 'FLAGGED' ? `${e.firstName} S.` : name;
+      return [`Account holder: ${holder}`, `Account number: 50100${String(n).padStart(7, '0')}`, 'IFSC: HDFC0001234', 'Bank: HDFC Bank'];
+    }
+    default:
+      return [`Name: ${name}`];
+  }
+}
+
+/** Minimal single-page PDF with Helvetica text; clearly marked as demo data. */
+function demoPdf(title: string, lines: string[]): Buffer {
+  const esc = (t: string) => t.replace(/[\\()]/g, (m) => `\\${m}`);
+  const body = [
+    `BT /F1 20 Tf 72 720 Td (${esc(title)}) Tj ET`,
+    ...lines.map((l, i) => `BT /F1 12 Tf 72 ${680 - i * 20} Td (${esc(l)}) Tj ET`),
+    'BT /F1 9 Tf 72 60 Td (DEMO DATA - NOT A REAL DOCUMENT) Tj ET',
+  ].join('\n');
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>',
+    `<< /Length ${Buffer.byteLength(body, 'latin1')} >>\nstream\n${body}\nendstream`,
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+  ];
+  let pdf = '%PDF-1.4\n';
+  const offsets: number[] = [];
+  objects.forEach((obj, i) => {
+    offsets.push(Buffer.byteLength(pdf, 'latin1'));
+    pdf += `${i + 1} 0 obj\n${obj}\nendobj\n`;
+  });
+  const xref = Buffer.byteLength(pdf, 'latin1');
+  pdf +=
+    `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n` +
+    offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`).join('') +
+    `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Buffer.from(pdf, 'latin1');
 }
 
 main()

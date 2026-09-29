@@ -49,14 +49,41 @@ export async function apiFetch<T>(
     throw new ApiRequestError(0, "Can't reach the HR API. Is it running?");
   }
 
-  if (!res.ok) {
-    const error = (await res.json().catch(() => null)) as Partial<ApiError> | null;
-    const message = Array.isArray(error?.message)
-      ? error.message.join(", ")
-      : (error?.message ?? res.statusText);
-    throw new ApiRequestError(res.status, message, error?.issues, error?.problems);
-  }
+  if (!res.ok) throw await toApiError(res);
   return (await res.json()) as T;
+}
+
+async function toApiError(res: Response): Promise<ApiRequestError> {
+  const error = (await res.json().catch(() => null)) as Partial<ApiError> | null;
+  const message = Array.isArray(error?.message)
+    ? error.message.join(", ")
+    : (error?.message ?? res.statusText);
+  return new ApiRequestError(res.status, message, error?.issues, error?.problems);
+}
+
+/** Multipart upload (e.g. documents). */
+export async function apiUpload<T>(token: string | undefined, path: string, form: FormData): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(new URL(path, API_URL), {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: form,
+    });
+  } catch {
+    throw new ApiRequestError(0, "Can't reach the HR API. Is it running?");
+  }
+  if (!res.ok) throw await toApiError(res);
+  return (await res.json()) as T;
+}
+
+/** Authenticated binary download (files aren't reachable by plain links). */
+export async function apiDownload(token: string | undefined, path: string): Promise<Blob> {
+  const res = await fetch(new URL(path, API_URL), {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  if (!res.ok) throw await toApiError(res);
+  return res.blob();
 }
 
 export function errorMessage(error: unknown): string {

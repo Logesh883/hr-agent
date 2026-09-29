@@ -10,9 +10,11 @@ function findWorkspaceRoot(dir: string): string | undefined {
   return parent === dir ? undefined : findWorkspaceRoot(parent);
 }
 
+/** Monorepo root; falls back to the working directory outside the repo. */
+export const workspaceRoot = findWorkspaceRoot(import.meta.dirname) ?? process.cwd();
+
 // Env vars live in the monorepo root .env; real env vars take precedence.
-const root = findWorkspaceRoot(import.meta.dirname);
-if (root) loadDotenv({ path: path.join(root, '.env'), quiet: true });
+loadDotenv({ path: path.join(workspaceRoot, '.env'), quiet: true });
 
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
@@ -20,6 +22,11 @@ const envSchema = z.object({
   WEB_ORIGIN: z.string().default('http://localhost:3000'),
   JWT_SECRET: z.string().min(16, 'JWT_SECRET must be at least 16 characters'),
   JWT_EXPIRES_IN_SECONDS: z.coerce.number().int().positive().default(28800),
+  /** Local storage driver root; relative paths resolve from the monorepo root. */
+  STORAGE_DIR: z
+    .string()
+    .default('storage')
+    .transform((dir) => path.resolve(workspaceRoot, dir)),
 });
 
 export type Env = z.infer<typeof envSchema>;

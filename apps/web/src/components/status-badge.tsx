@@ -17,6 +17,9 @@ const statuses = {
   APPROVED: { label: "Approved", tone: "positive" },
   REJECTED: { label: "Rejected", tone: "negative" },
   CANCELLED: { label: "Cancelled", tone: "neutral" },
+  VERIFIED: { label: "Verified", tone: "positive" },
+  FLAGGED: { label: "Flagged", tone: "negative" },
+  MISSING: { label: "Missing", tone: "neutral" },
 } as const satisfies Record<string, { label: string; tone: keyof typeof tones }>;
 
 export type BadgeStatus = keyof typeof statuses;
