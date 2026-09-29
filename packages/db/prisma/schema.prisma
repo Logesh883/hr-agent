@@ -92,6 +92,17 @@ enum CorrectionStatus {
   REJECTED
 }
 
+enum PolicyCategory {
+  LEAVE
+  ATTENDANCE
+  CONDUCT
+  ONBOARDING
+  BENEFITS
+  PAYROLL
+  IT_SECURITY
+  OTHER
+}
+
 enum OnboardingTaskStatus {
   PENDING
   DONE
@@ -133,6 +144,7 @@ model User {
   onboardingDone      OnboardingTask[]
   correctionsProposed AttendanceCorrection[] @relation("CorrectionProposedBy")
   correctionsReviewed AttendanceCorrection[] @relation("CorrectionReviewedBy")
+  policiesPublished   PolicyDocument[]
 }
 
 model Department {
@@ -347,4 +359,23 @@ model AttendanceCorrection {
 
   @@index([status])
   @@index([employeeId, date])
+}
+
+/// One published version of an HR policy (spec: PolicyDocument). Chunks for RAG come in the AI scope.
+model PolicyDocument {
+  id            String         @id @default(uuid()) @db.Uuid
+  title         String
+  category      PolicyCategory
+  version       Int
+  effectiveFrom DateTime       @db.Date
+  summary       String?
+  fileName      String
+  mimeType      String
+  sizeBytes     Int
+  storageKey    String         @unique
+  publishedById String         @db.Uuid
+  publishedBy   User           @relation(fields: [publishedById], references: [id])
+  createdAt     DateTime       @default(now())
+
+  @@unique([title, version])
 }

@@ -7,4 +7,6 @@ export * from './document.js';
 export * from './employee.js';
 export * from './leave.js';
 export * from './onboarding.js';
+export * from './payroll.js';
 export * from './permissions.js';
+export * from './policy.js';

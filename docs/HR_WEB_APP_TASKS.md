@@ -58,43 +58,45 @@ Business rules enforced by the API: unique email/department code, active departm
 
 **Exit:** met. Verified by 75 API tests (unit, RBAC matrix, database lifecycle) and a 23-check browser run as HR, Manager, and Employee.
 
-## Phase 2 — Core HR (Leave, Attendance, Onboarding, Documents)
+## Phase 2 — Core HR (Leave, Attendance, Onboarding, Documents) ✅
+
+Built as vertical slices (API + tests + UI), in the order leave → documents → onboarding → attendance → payroll/policies. Shared foundation: **data scope** (HR/admin see everyone; managers see themselves and direct reports for leave, attendance and onboarding; everyone else sees themselves; documents are never team-visible).
 
 ### 2.1 Onboarding
-- [ ] T2.1 Schema: `OnboardingTask`; checklist templates per department
-- [ ] T2.2 API: start onboarding (creates tasks), update task status, progress summary
-- [ ] T2.3 UI: onboarding board per employee, progress bar, missing-info warnings
+- [x] T2.1 Schema: `OnboardingTemplateTask` (company-wide + department-specific, due relative to joining) and `OnboardingTask`
+- [x] T2.2 API: start onboarding, update task (HR, or the manager/new-hire assignee), progress summary; document tasks complete only when the document is verified
+- [x] T2.3 UI: onboarding tab per employee (progress, checklist, skip with note), onboarding list, missing-info warnings
 
 ### 2.2 Leave
-- [ ] T2.4 Schema: `LeaveRequest`, `LeaveBalance`, leave types
-- [ ] T2.5 Deterministic validation: date ranges, overlaps, balance, weekends/holidays
-- [ ] T2.6 API: create, list, approve/reject (manager/HR only), balances
-- [ ] T2.7 UI: leave requests list, request form, approval queue, balance view
-- [ ] T2.8 Unit tests for leave validation rules
+- [x] T2.4 Schema: `LeaveRequest`, `Holiday`; balances are **computed** from policy entitlements (prorated by joining month) minus approved and pending days, so they can't drift
+- [x] T2.5 Deterministic validation as pure functions: working days (weekends + holidays), overlaps, balance, backdating, span, year boundary; every failure explained in words
+- [x] T2.6 API: preview (dry run), create, list (mine / approvals / all), approve/reject (manager for direct reports, HR for anyone, never your own), cancel, balances; per-employee advisory lock against overdrawing
+- [x] T2.7 UI: my leave with balances, request dialog with live preview, approvals queue, team/all, who's out, holidays
+- [x] T2.8 Unit tests for leave rules
 
 ### 2.3 Attendance
-- [ ] T2.9 Schema: `AttendanceRecord`; seed a month of data with gaps/anomalies
-- [ ] T2.10 API: daily/monthly views, missing-attendance and anomaly queries
-- [ ] T2.11 Cross-check with approved leave
-- [ ] T2.12 Correction proposals (`proposed` → `approved` → `applied`); historical edits need approval
-- [ ] T2.13 UI: calendar/table views, anomaly list, correction review
+- [x] T2.9 Schema: `AttendanceRecord` (times stored as instants, shown in IST) and `AttendanceCorrection`; eight weeks of seeded data with deliberate anomalies
+- [x] T2.10 API: daily and monthly views with per-employee day detail; anomalies: missing record, absent without leave, late check-in, missing check-out, short day
+- [x] T2.11 Cross-check with approved leave (leave days, and check-ins on leave days)
+- [x] T2.12 Corrections: proposed → approved (applied) or rejected; the record never changes before approval; proposer ≠ approver; no reviewing your own attendance
+- [x] T2.13 UI: daily table, monthly summary, anomalies list, corrections queue, month calendar on the employee page
 
 ### 2.4 Documents
-- [ ] T2.14 Supabase Storage (or local MinIO in docker) client in api
-- [ ] T2.15 Schema: `Document`; upload, list, verification status
-- [ ] T2.16 API: upload (signed URL), mark verified/flagged, per-employee inventory
-- [ ] T2.17 UI: document tab on employee page, upload, verify/flag actions
+- [x] T2.14 Storage abstraction with a local-disk driver; the S3/Supabase driver moves to deployment (T5.4)
+- [x] T2.15 Schema: `Document` (with an `extraction` column reserved for the AI OCR pipeline)
+- [x] T2.16 API: upload through the API (10 MB, PDF/JPEG/PNG checked by file signature), authenticated download, verify/flag with note, review queue. Uploads go through the API rather than signed URLs so every read is access-checked
+- [x] T2.17 UI: documents tab with required-documents checklist, upload, HR review queue (pending / flagged / all)
 
 ### 2.5 Payroll preparation (report only)
-- [ ] T2.18 Report: employee changes, attendance, leave for a period
-- [ ] T2.19 Flags: missing bank details, inconsistent data
-- [ ] T2.20 UI: reviewable report page + CSV export
+- [x] T2.18 Report per month: working, worked, paid/unpaid leave, unexplained days, loss of pay, payable days; joiners, exits and payroll-relevant edits from the audit log
+- [x] T2.19 Flags: missing/unverified/flagged bank details and PAN, unresolved attendance, pending leave, pending corrections
+- [x] T2.20 UI: report page with "needs attention" filter + CSV export
 
 ### 2.6 Policies
-- [ ] T2.21 Schema: `PolicyDocument` with version, category, effectiveFrom
-- [ ] T2.22 API + UI: upload new policy version, list versions
+- [x] T2.21 Schema: `PolicyDocument` with version, category, effectiveFrom; seeded Markdown policies whose numbers match the enforced rules (RAG sources for the AI scope)
+- [x] T2.22 API + UI: publish new versions (PDF/DOCX/Markdown/text), version history with in force / upcoming / superseded by effective date
 
-**Exit:** every HR area in README §2 is usable through the admin UI without any AI.
+**Exit:** met. Every HR area in README §2 works through the admin UI without AI. Verified by 29 unit tests, 265 API end-to-end tests (including an RBAC matrix over every endpoint and role), and a 59-check browser run across HR, manager and employee journeys.
 
 ## Phase 3 — Tool API (Contract with the AI Agent)
 

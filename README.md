@@ -27,7 +27,7 @@ pnpm install
 cp .env.example .env    # then set JWT_SECRET and AUTH_SECRET: openssl rand -base64 32
 pnpm db:up              # PostgreSQL 16 + pgvector on localhost:5433
 pnpm db:migrate         # apply Prisma migrations
-pnpm db:seed            # 4 departments, 20 employees, demo logins
+pnpm db:seed            # demo company: people, leave, documents, onboarding, attendance, policies
 pnpm dev                # web on http://localhost:3000, api on http://localhost:4000
 ```
 
@@ -36,16 +36,18 @@ Demo logins (password `Password123!`), also shown as one-click buttons on the si
 | Email | Role | Can |
 | --- | --- | --- |
 | `admin@hr.local` | Admin | Everything |
-| `hr@hr.local` | HR Operations | Manage employees and departments, read audit log |
-| `manager@hr.local` | Manager | Read the employee directory |
-| `employee@hr.local` | Employee | View departments only |
+| `hr@hr.local` | HR Operations (Lakshmi) | Everything: employees, onboarding, leave, attendance, documents, payroll prep, policies |
+| `manager@hr.local` | Manager (Rahul, Engineering) | Read the directory; approve the team's leave; see and propose corrections to the team's attendance; the team's onboarding |
+| `employee@hr.local` | Employee (Sneha) | Request leave, own attendance, onboarding and documents, read policies |
+
+The seed is a demo company with realistic loose ends to work through: leave awaiting approval, documents to verify (including a bank letter whose name doesn't match), new hires mid-onboarding with overdue tasks, attendance anomalies and a pending correction, and payroll blockers. Uploaded files go to `storage/` (git-ignored). Re-running `pnpm db:seed` resets the demo records.
 
 Other commands: `pnpm test` (API unit + e2e; needs the seeded database), `pnpm typecheck`, `pnpm lint`, `pnpm db:studio`, `pnpm db:reset`.
 
 | Path | What it is |
 | --- | --- |
 | `apps/web` | Next.js admin UI (Auth.js, TanStack Query, shadcn/ui) |
-| `apps/api` | NestJS HR API (JWT auth, RBAC guards, audit) |
+| `apps/api` | NestJS HR API (JWT auth, RBAC + data scope, business rules, audit, file storage) |
 | `packages/contracts` | Zod schemas, DTO types, roles and permissions shared by web and api |
 | `packages/db` | Prisma schema, migrations, seed |
 | `packages/config` | Shared tsconfig and Prettier config |

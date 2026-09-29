@@ -20,6 +20,7 @@ import {
   type LeaveType,
   type OnboardingAssignee,
   type OnboardingCategory,
+  type PolicyCategory,
   type Role,
 } from '../src/index.js';
 
@@ -245,12 +246,13 @@ async function main() {
   const documentCount = await seedDocuments(employeeIds, userIds);
   const taskCount = await seedOnboarding(deptIds, employeeIds, userIds);
   const attendanceCount = await seedAttendance(employeeIds, userIds, holidayDates);
+  await seedPolicies(userIds);
 
   console.log(
     `Seeded ${departments.length} departments, ${employees.length} employees, ${users.length} users, ` +
       `${holidays.length} holidays, ${leaveRequests.length} leave requests, ${documentCount} documents, ` +
       `${onboardingTemplates.length} onboarding templates, ${taskCount} onboarding tasks, ` +
-      `${attendanceCount} attendance records.`,
+      `${attendanceCount} attendance records, ${policies.length} policy versions.`,
   );
   console.log(`Demo logins (password "${DEMO_PASSWORD}"): ${users.map((u) => u.email).join(', ')}`);
 }
@@ -464,6 +466,217 @@ async function seedAttendance(
   });
 
   return rows.length;
+}
+
+// ---- Policies -------------------------------------------------------------------
+// Markdown sources for the AI agent's policy RAG. The numbers match the
+// deterministic rules the API enforces (@hr/contracts LEAVE_POLICY, ATTENDANCE_RULES).
+
+const policies: {
+  title: string;
+  category: PolicyCategory;
+  version: number;
+  effectiveFrom: string;
+  summary: string;
+  body: string;
+}[] = [
+  {
+    title: 'Leave Policy',
+    category: 'LEAVE',
+    version: 1,
+    effectiveFrom: '2025-01-01',
+    summary: 'Original leave policy: 15 days annual leave.',
+    body: `# Leave Policy (v1)
+
+Effective 1 January 2025. Superseded by version 2 from 1 January 2026.
+
+## Entitlements
+- Annual leave: 15 working days per calendar year.
+- Sick leave: 10 working days per calendar year.
+- Casual leave: 6 working days per calendar year.
+
+## Requesting leave
+Submit requests through the HR system. Your manager approves or rejects them.
+`,
+  },
+  {
+    title: 'Leave Policy',
+    category: 'LEAVE',
+    version: 2,
+    effectiveFrom: '2026-01-01',
+    summary: 'Annual leave raised to 18 days; sick leave to 12; clearer approval and backdating rules.',
+    body: `# Leave Policy (v2)
+
+Effective 1 January 2026. Replaces version 1.
+
+## 1. Entitlements
+| Type | Days per calendar year |
+| --- | --- |
+| Annual leave | 18 |
+| Sick leave | 12 |
+| Casual leave | 6 |
+| Unpaid leave | No limit (subject to approval) |
+
+Employees who join during the year receive a prorated entitlement: the annual amount multiplied by the months remaining in the year (including the joining month) divided by 12, rounded down to the nearest half day.
+
+Unused leave does not carry over to the next year.
+
+## 2. What counts as a leave day
+Only working days count. Weekends (Saturday and Sunday) and company holidays inside a request are not deducted from the balance.
+
+## 3. Requesting leave
+- Request leave in the HR system before it starts wherever possible.
+- Leave may be recorded up to 30 days after it starts (for example, sick leave taken unexpectedly). Older requests need HR to review them outside the system.
+- A single request may cover at most 60 calendar days and must not span two calendar years.
+- Requests may not overlap another pending or approved request.
+- A request that exceeds the available balance cannot be submitted; request unpaid leave for the remainder.
+
+## 4. Approval
+- Leave is approved by the employee's direct manager.
+- Leave for managers without a manager of their own, and for anyone whose manager is unavailable, is approved by HR.
+- Nobody approves their own leave.
+- A rejection must include a reason, which the employee can see.
+
+## 5. Cancelling leave
+Employees may cancel a pending request at any time, and an approved request any time before it starts. Leave that has already started can only be changed by HR.
+`,
+  },
+  {
+    title: 'Attendance Policy',
+    category: 'ATTENDANCE',
+    version: 1,
+    effectiveFrom: '2026-01-01',
+    summary: 'Working hours, late check-ins, half days and how attendance corrections are approved.',
+    body: `# Attendance Policy
+
+Effective 1 January 2026.
+
+## 1. Working days and hours
+The working week is Monday to Friday, excluding company holidays. Employees badge in when they arrive and badge out when they leave.
+
+## 2. Late arrival
+Checking in after 10:30 (India Standard Time) is recorded as a late check-in. Repeated late check-ins are discussed with the employee's manager.
+
+## 3. Full and half days
+- A full day requires at least 6 hours between check-in and check-out.
+- A half day requires at least 4 hours.
+- A day marked present with less than the minimum is flagged for review.
+
+## 4. Missing records
+A working day with no attendance record and no approved leave is flagged. Unless it is resolved before payroll is prepared, it is treated as loss of pay.
+
+## 5. Corrections
+Past attendance records are never edited directly. A manager or HR proposes a correction with a reason; HR approves or rejects it. The person who proposes a correction cannot approve it, and nobody reviews corrections to their own attendance. The original record is kept in the audit history.
+
+## 6. Leave and attendance
+Approved leave takes precedence. Badging in on a day of approved leave is flagged so the leave can be cancelled or the record corrected.
+`,
+  },
+  {
+    title: 'Employee Onboarding Policy',
+    category: 'ONBOARDING',
+    version: 1,
+    effectiveFrom: '2025-06-01',
+    summary: 'Required documents, first-week checklist and probation.',
+    body: `# Employee Onboarding Policy
+
+Effective 1 June 2025.
+
+## 1. Before day one
+HR collects the signed offer letter and the following documents, each verified by HR:
+- Identity proof (Aadhaar or passport)
+- PAN card
+- Bank account details (needed before the first payroll run)
+
+IT creates email and system accounts and prepares a laptop. The manager sends a welcome message to the new hire.
+
+## 2. First week
+- Day one: HR orientation.
+- The manager assigns an onboarding buddy on day one.
+- Engineering hires receive code repository and cloud access on day one, and a first code review walkthrough within the first week.
+- Sales hires receive CRM access and their territory handover within three days.
+- New hires read and acknowledge company policies within seven days.
+
+## 3. Check-ins and probation
+The manager holds a 30-day check-in with every new hire. New employees are on probation for six months from the joining date.
+
+## 4. Missing information
+HR follows up on missing personal details (phone number, date of birth), an unassigned manager, and documents that are missing, unverified or flagged for correction.
+`,
+  },
+  {
+    title: 'Code of Conduct',
+    category: 'CONDUCT',
+    version: 1,
+    effectiveFrom: '2024-04-01',
+    summary: 'Expected behaviour, conflicts of interest and how to raise concerns.',
+    body: `# Code of Conduct
+
+Effective 1 April 2024.
+
+- Treat colleagues, customers and partners with respect. Harassment and discrimination are not tolerated.
+- Declare conflicts of interest to your manager and HR.
+- Protect confidential company and customer information.
+- Raise concerns with your manager, HR, or the confidential ethics line. Retaliation against anyone who raises a concern in good faith is prohibited.
+`,
+  },
+  {
+    title: 'Information Security Policy',
+    category: 'IT_SECURITY',
+    version: 1,
+    effectiveFrom: '2025-01-01',
+    summary: 'Passwords, device security and handling personal data.',
+    body: `# Information Security Policy
+
+Effective 1 January 2025.
+
+- Use the company password manager and enable multi-factor authentication on every work account.
+- Lock your screen when you step away; laptops use full-disk encryption.
+- Employee personal data (identity documents, bank details, PAN) is accessible only to HR and to the employee concerned.
+- Report lost devices or suspected incidents to IT immediately.
+`,
+  },
+  {
+    title: 'Hybrid Work Policy',
+    category: 'OTHER',
+    version: 1,
+    effectiveFrom: '2026-11-01',
+    summary: 'Three office days a week from November 2026.',
+    body: `# Hybrid Work Policy
+
+Effective 1 November 2026.
+
+- Employees work from the office at least three days a week; teams agree their shared office days.
+- Remote days follow normal working hours and attendance rules.
+- Managers may approve temporary fully remote arrangements for up to four weeks.
+`,
+  },
+];
+
+async function seedPolicies(userIds: Map<string, string>) {
+  const storageRoot = path.resolve(import.meta.dirname, '../../..', process.env.STORAGE_DIR ?? 'storage');
+  const hr = userIds.get(HR)!;
+  for (const [i, p] of policies.entries()) {
+    const id = `6c1f0a2e-0006-4000-8000-${String(i + 1).padStart(12, '0')}`;
+    const storageKey = `policies/${id}.md`;
+    const content = Buffer.from(p.body, 'utf8');
+    await mkdir(path.join(storageRoot, 'policies'), { recursive: true });
+    await writeFile(path.join(storageRoot, storageKey), content);
+    const data = {
+      title: p.title,
+      category: p.category,
+      version: p.version,
+      effectiveFrom: date(p.effectiveFrom),
+      summary: p.summary,
+      fileName: `${p.title.replace(/ /g, '_')}_v${p.version}.md`,
+      mimeType: 'text/markdown; charset=utf-8',
+      sizeBytes: content.length,
+      storageKey,
+      publishedById: hr,
+      createdAt: new Date(date(p.effectiveFrom).getTime() - 14 * 86_400_000),
+    };
+    await prisma.policyDocument.upsert({ where: { id }, update: data, create: { id, ...data } });
+  }
 }
 
 // ---- Documents ---------------------------------------------------------------

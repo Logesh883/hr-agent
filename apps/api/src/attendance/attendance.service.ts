@@ -59,7 +59,7 @@ export class AttendanceService {
   ) {}
 
   async daily(user: AuthUser, query: DailyAttendanceQuery): Promise<DailyAttendance> {
-    const { days, holidays } = await this.buildDays(user, query.date, query.date, query);
+    const { days, holidays } = await this.dayGrid(user, query.date, query.date, query);
     const summary = { present: 0, halfDay: 0, absent: 0, onLeave: 0, missing: 0 };
     for (const d of days) {
       if (d.dayStatus === 'PRESENT') summary.present++;
@@ -81,7 +81,7 @@ export class AttendanceService {
   async monthly(user: AuthUser, query: MonthlyAttendanceQuery): Promise<MonthlyAttendance> {
     if (query.employeeId) await assertEmployeeInScope(this.prisma, user, query.employeeId, 'team');
     const { start, end } = monthRange(query.month);
-    const { days, holidays } = await this.buildDays(user, start, end, query);
+    const { days, holidays } = await this.dayGrid(user, start, end, query);
     const today = todayIso();
 
     const rows = new Map<string, MonthlyAttendanceRow>();
@@ -242,7 +242,8 @@ export class AttendanceService {
 
   // ---- Helpers ---------------------------------------------------------------
 
-  private async buildDays(user: AuthUser, from: string, to: string, filters: Filters) {
+  /** Every employee-day in scope between two dates, evaluated against leave and holidays. */
+  async dayGrid(user: AuthUser, from: string, to: string, filters: Filters = {}) {
     const employees = await this.prisma.employee.findMany({
       where: {
         AND: [

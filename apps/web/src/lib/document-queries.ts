@@ -7,7 +7,8 @@ import type {
   Paginated,
 } from "@hr/contracts";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiDownload, apiFetch, apiUpload } from "./api";
+import { apiFetch, apiUpload } from "./api";
+import { useOpenFile } from "./open-file";
 import { useAccessToken } from "./session";
 
 export const documentKeys = {
@@ -71,23 +72,6 @@ export function useReviewDocument() {
 
 /** Opens a document in a new tab via an authenticated fetch. */
 export function useOpenDocument() {
-  const token = useAccessToken();
-  return async (doc: EmployeeDocument) => {
-    // Open the tab synchronously so popup blockers allow it, then point it at the file.
-    const tab = window.open("", "_blank");
-    try {
-      const blob = await apiDownload(token, `/documents/${doc.id}/file`);
-      const url = URL.createObjectURL(blob);
-      if (tab) {
-        tab.location.href = url;
-      } else {
-        const link = Object.assign(document.createElement("a"), { href: url, download: doc.fileName });
-        link.click();
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (error) {
-      tab?.close();
-      throw error;
-    }
-  };
+  const openFile = useOpenFile();
+  return (doc: EmployeeDocument) => openFile(`/documents/${doc.id}/file`, doc.fileName);
 }

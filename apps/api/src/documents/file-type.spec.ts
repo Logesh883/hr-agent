@@ -1,4 +1,4 @@
-import { detectFileType, sanitizeFileName } from './file-type.js';
+import { detectFileType, detectPolicyFileType, sanitizeFileName } from './file-type.js';
 
 describe('detectFileType', () => {
   it('recognises PDF, PNG and JPEG by their leading bytes', () => {
@@ -23,5 +23,21 @@ describe('sanitizeFileName', () => {
 
   it('falls back when nothing usable is left', () => {
     expect(sanitizeFileName('   ', 'PAN card.pdf')).toBe('PAN card.pdf');
+  });
+});
+
+describe('detectPolicyFileType', () => {
+  it('accepts PDF, DOCX, Markdown and text policy sources', () => {
+    expect(detectPolicyFileType(Buffer.from('%PDF-1.7'), 'leave.pdf')?.mimeType).toBe('application/pdf');
+    expect(detectPolicyFileType(Buffer.from([0x50, 0x4b, 0x03, 0x04, 1, 2]), 'Leave.DOCX')?.extension).toBe('.docx');
+    expect(detectPolicyFileType(Buffer.from('# Leave policy\n'), 'leave.md')?.mimeType).toMatch(/^text\/markdown/);
+    expect(detectPolicyFileType(Buffer.from('Leave policy'), 'leave.txt')?.mimeType).toMatch(/^text\/plain/);
+  });
+
+  it('rejects binaries dressed up as text, and other ZIPs', () => {
+    expect(detectPolicyFileType(Buffer.from([0x4d, 0x5a, 0x00, 0x90]), 'policy.md')).toBeNull();
+    expect(detectPolicyFileType(Buffer.from([0xff, 0xfe, 0xfd]), 'policy.txt')).toBeNull();
+    expect(detectPolicyFileType(Buffer.from([0x50, 0x4b, 0x03, 0x04]), 'policy.zip')).toBeNull();
+    expect(detectPolicyFileType(Buffer.from('# hi'), 'policy.html')).toBeNull();
   });
 });

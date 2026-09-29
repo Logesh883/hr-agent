@@ -27,7 +27,9 @@ const statuses = {
   HOLIDAY: { label: "Holiday", tone: "neutral" },
   WEEKEND: { label: "Weekend", tone: "neutral" },
   NOT_EMPLOYED: { label: "Not joined", tone: "neutral" },
-  UPCOMING: { label: "Upcoming", tone: "neutral" },
+  UPCOMING: { label: "Upcoming", tone: "info" },
+  CURRENT: { label: "In force", tone: "positive" },
+  SUPERSEDED: { label: "Superseded", tone: "neutral" },
 } as const satisfies Record<string, { label: string; tone: keyof typeof tones }>;
 
 export type BadgeStatus = keyof typeof statuses;

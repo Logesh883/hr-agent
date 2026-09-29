@@ -17,6 +17,8 @@ import { DocumentsService } from '../src/documents/documents.service.js';
 import { EmployeesService } from '../src/employees/employees.service.js';
 import { LeaveService } from '../src/leave/leave.service.js';
 import { OnboardingService } from '../src/onboarding/onboarding.service.js';
+import { PayrollService } from '../src/payroll/payroll.service.js';
+import { PoliciesService } from '../src/policies/policies.service.js';
 import { PrismaService } from '../src/prisma/prisma.service.js';
 
 const ID = '5f0d7c3e-8a51-4c47-9d2e-1b6a0f3c9e21';
@@ -26,6 +28,7 @@ const DOC = '3d7c1b2a-5e6f-4a8b-9c0d-1e2f3a4b5c6d';
 const HR_ONLY: Role[] = ['ADMIN', 'HR_OPS'];
 const TASK = '4e8d2c3b-6f7a-4b9c-8d1e-2f3a4b5c6d7e';
 const CORRECTION = '5f9e3d4c-7a8b-4c0d-9e2f-3a4b5c6d7e8f';
+const POLICY = '6a0f4e5d-8b9c-4d1e-8f3a-4b5c6d7e8f90';
 const correctionBody = { employeeId: ID, date: '2026-09-24', status: 'PRESENT', checkIn: '09:00', checkOut: '18:00', reason: 'Badge reader down' };
 const ALL: Role[] = ['ADMIN', 'HR_OPS', 'MANAGER', 'EMPLOYEE'];
 const leaveBody = { type: 'CASUAL', startDate: '2027-03-01', endDate: '2027-03-02' };
@@ -88,6 +91,11 @@ const endpoints: {
   { method: 'post', path: '/attendance/corrections', body: correctionBody, allowed: ['ADMIN', 'HR_OPS', 'MANAGER'] },
   { method: 'post', path: `/attendance/corrections/${CORRECTION}/approve`, body: {}, allowed: HR_ONLY },
   { method: 'post', path: `/attendance/corrections/${CORRECTION}/reject`, body: { reason: 'No' }, allowed: HR_ONLY },
+  { method: 'get', path: '/payroll/preparation?month=2026-09', allowed: HR_ONLY },
+  { method: 'get', path: '/payroll/preparation.csv?month=2026-09', allowed: HR_ONLY },
+  { method: 'get', path: '/policies', allowed: ALL },
+  { method: 'post', path: '/policies', body: { title: 'Leave Policy', category: 'LEAVE', effectiveFrom: '2027-01-01' }, allowed: HR_ONLY },
+  { method: 'get', path: `/policies/${POLICY}/file`, allowed: ALL },
 ];
 
 const userIdFor = (role: Role) =>
@@ -142,6 +150,13 @@ describe('RBAC', () => {
       .useValue(stubService(['list', 'forEmployee', 'start', 'updateTask']))
       .overrideProvider(AttendanceService)
       .useValue(stubService(['daily', 'monthly', 'corrections', 'propose', 'approve', 'reject']))
+      .overrideProvider(PayrollService)
+      .useValue({ ...stubService(['preparation']), preparationCsv: vi.fn().mockResolvedValue('a,b\r\n') })
+      .overrideProvider(PoliciesService)
+      .useValue({
+        ...stubService(['list', 'publish']),
+        readFile: vi.fn().mockResolvedValue({ doc: { mimeType: 'text/plain', fileName: 'p.txt' }, data: Buffer.from('x') }),
+      })
       .overrideProvider(AuditService)
       .useValue(stubService(['search', 'record']))
       .compile();

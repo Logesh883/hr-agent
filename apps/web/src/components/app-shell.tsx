@@ -1,7 +1,20 @@
 "use client";
 
 import type { Permission } from "@hr/contracts";
-import { Building2, CalendarDays, ClipboardCheck, Clock, FileText, LayoutDashboard, LogOut, Moon, Sun, Users } from "lucide-react";
+import {
+  Banknote,
+  BookOpen,
+  Building2,
+  CalendarDays,
+  ClipboardCheck,
+  Clock,
+  FileText,
+  LayoutDashboard,
+  LogOut,
+  Moon,
+  Sun,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
@@ -28,6 +41,8 @@ const nav: { href: string; label: string; icon: typeof Users; permission?: Permi
   { href: "/leave", label: "Leave", icon: CalendarDays, permission: "leave:request" },
   { href: "/attendance", label: "Attendance", icon: Clock, permission: "attendance:read" },
   { href: "/documents", label: "Documents", icon: FileText, permission: "document:read" },
+  { href: "/payroll", label: "Payroll prep", icon: Banknote, permission: "payroll:read" },
+  { href: "/policies", label: "Policies", icon: BookOpen, permission: "policy:read" },
   { href: "/departments", label: "Departments", icon: Building2, permission: "department:read" },
 ];
 

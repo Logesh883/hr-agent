@@ -11,6 +11,8 @@ import { DocumentsModule } from './documents/documents.module.js';
 import { EmployeesModule } from './employees/employees.module.js';
 import { LeaveModule } from './leave/leave.module.js';
 import { OnboardingModule } from './onboarding/onboarding.module.js';
+import { PayrollModule } from './payroll/payroll.module.js';
+import { PoliciesModule } from './policies/policies.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { StorageModule } from './storage/storage.module.js';
 
@@ -26,6 +28,8 @@ import { StorageModule } from './storage/storage.module.js';
     DocumentsModule,
     OnboardingModule,
     AttendanceModule,
+    PayrollModule,
+    PoliciesModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_FILTER, useClass: PrismaExceptionFilter }],
