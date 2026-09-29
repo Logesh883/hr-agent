@@ -1,0 +1,26 @@
+node_modules/
+.pnpm-store/
+dist/
+build/
+.next/
+out/
+coverage/
+*.tsbuildinfo
+
+.env
+.env.*
+!.env.example
+
+.DS_Store
+*.log
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Python (apps/ai)
+__pycache__/
+*.pyc
+.venv/
+
+# Prisma generated client (packages/db)
+packages/db/src/generated/

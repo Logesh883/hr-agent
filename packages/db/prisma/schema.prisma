@@ -1,0 +1,124 @@
+// HR Operations — core schema (Phase 1: users, employees, departments, audit).
+// Enum values mirror @hr/contracts.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  ADMIN
+  HR_OPS
+  MANAGER
+  EMPLOYEE
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  PROBATION
+  ARCHIVED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERN
+}
+
+enum DepartmentStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum ActorType {
+  USER
+  AI
+  SYSTEM
+}
+
+/// Login account. Linked to an Employee record when the user is also staff.
+model User {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @unique
+  name         String
+  passwordHash String
+  role         Role
+  isActive     Boolean   @default(true)
+  employeeId   String?   @unique @db.Uuid
+  employee     Employee? @relation(fields: [employeeId], references: [id])
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Department {
+  id        String           @id @default(uuid()) @db.Uuid
+  name      String           @unique
+  code      String           @unique
+  status    DepartmentStatus @default(ACTIVE)
+  managerId String?          @db.Uuid
+  manager   Employee?        @relation("DepartmentManager", fields: [managerId], references: [id])
+  employees Employee[]       @relation("DepartmentEmployees")
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+}
+
+model Employee {
+  id                 String         @id @default(uuid()) @db.Uuid
+  employeeCode       String         @unique
+  firstName          String
+  lastName           String
+  email              String         @unique
+  phone              String?
+  dateOfBirth        DateTime?      @db.Date
+  jobTitle           String
+  location           String
+  joiningDate        DateTime       @db.Date
+  employmentType     EmploymentType
+  status             EmployeeStatus @default(PROBATION)
+  departmentId       String         @db.Uuid
+  department         Department     @relation("DepartmentEmployees", fields: [departmentId], references: [id])
+  managerId          String?        @db.Uuid
+  manager            Employee?      @relation("ManagerReports", fields: [managerId], references: [id])
+  reports            Employee[]     @relation("ManagerReports")
+  managedDepartments Department[]   @relation("DepartmentManager")
+  user               User?
+  /// Optimistic locking: incremented on every update.
+  version            Int            @default(1)
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([departmentId])
+  @@index([managerId])
+  @@index([status])
+  @@index([lastName, firstName])
+}
+
+/// Append-only record of every mutation, by a human or the AI agent.
+model AuditLog {
+  id         String    @id @default(uuid()) @db.Uuid
+  actorType  ActorType
+  actorId    String?   @db.Uuid
+  action     String
+  entityType String
+  entityId   String    @db.Uuid
+  before     Json?
+  after      Json?
+  timestamp  DateTime  @default(now())
+
+  @@index([entityType, entityId])
+  @@index([actorId])
+  @@index([timestamp])
+}
+
+/// Named counters for human-readable codes (e.g. EMP-0001).
+model Counter {
+  name  String @id
+  value Int
+}

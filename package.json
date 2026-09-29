@@ -1,0 +1,24 @@
+{
+  "name": "hr-ai-employee",
+  "private": true,
+  "packageManager": "pnpm@10.22.0",
+  "scripts": {
+    "dev": "pnpm build:packages && pnpm --parallel --filter web --filter api --filter @hr/contracts dev",
+    "dev:web": "pnpm --filter web dev",
+    "dev:api": "pnpm --filter api dev",
+    "build:packages": "pnpm --filter @hr/contracts --filter @hr/db build",
+    "build": "pnpm build:packages && pnpm --filter web --filter api build",
+    "lint": "pnpm -r lint",
+    "typecheck": "pnpm build:packages && pnpm --filter api exec tsc --noEmit && pnpm --filter web exec tsc --noEmit",
+    "test": "pnpm --filter api test && pnpm --filter api test:e2e",
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "db:migrate": "pnpm --filter @hr/db migrate",
+    "db:seed": "pnpm --filter @hr/db seed",
+    "db:reset": "pnpm --filter @hr/db reset",
+    "db:studio": "pnpm --filter @hr/db studio"
+  },
+  "devDependencies": {
+    "@hr/config": "workspace:*"
+  }
+}

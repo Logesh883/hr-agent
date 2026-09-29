@@ -1,0 +1,3 @@
+{
+  "extends": "@hr/config/tsconfig.library.json"
+}
