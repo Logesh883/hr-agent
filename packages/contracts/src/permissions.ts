@@ -26,6 +26,8 @@ export const PERMISSIONS = [
   'payroll:read',
   'policy:read',
   'policy:manage',
+  /** Give employees a login, change their role, reset passwords, turn access off. */
+  'access:manage',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -70,6 +72,16 @@ export const ORG_WIDE_ROLES: readonly Role[] = ['ADMIN', 'HR_OPS'];
 
 export function isOrgWide(role: Role): boolean {
   return ORG_WIDE_ROLES.includes(role);
+}
+
+/**
+ * Roles a user may hand out. HR can grant up to HR Operations; only admins can
+ * create or change admins.
+ */
+export function grantableRoles(granter: Role): Role[] {
+  if (granter === 'ADMIN') return [...ROLES];
+  if (granter === 'HR_OPS') return ['EMPLOYEE', 'MANAGER', 'HR_OPS'];
+  return [];
 }
 
 export function permissionsForRole(role: Role): Permission[] {

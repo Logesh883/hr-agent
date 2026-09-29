@@ -134,6 +134,10 @@ export class EmployeesService {
 
     return this.prisma.$transaction(async (tx) => {
       await updateWithVersion(tx, id, version, toUpdateData(changes));
+      if (changes.email && changes.email !== current.email) {
+        // The login email is always the work email.
+        await tx.user.updateMany({ where: { employeeId: id }, data: { email: changes.email } });
+      }
       const row = await tx.employee.findUniqueOrThrow({
         where: { id },
         include: employeeInclude,
@@ -216,6 +220,11 @@ export class EmployeesService {
   ): Promise<Employee> {
     return this.prisma.$transaction(async (tx) => {
       await updateWithVersion(tx, id, version, { status });
+      // Leavers can't sign in. Reactivating doesn't restore access automatically.
+      const { count: loginsDisabled } =
+        status === 'ARCHIVED'
+          ? await tx.user.updateMany({ where: { employeeId: id, isActive: true }, data: { isActive: false } })
+          : { count: 0 };
       const row = await tx.employee.findUniqueOrThrow({
         where: { id },
         include: employeeInclude,
@@ -226,7 +235,7 @@ export class EmployeesService {
         entityType: 'Employee',
         entityId: id,
         before: { status: previous },
-        after: { status, ...(reason ? { reason } : {}) },
+        after: { status, ...(reason ? { reason } : {}), ...(loginsDisabled ? { loginDisabled: true } : {}) },
       });
       return toEmployee(row);
     });
@@ -292,6 +301,13 @@ export class EmployeesService {
       throw new ConflictException(
         `Email is already used by ${existing.employeeCode}`,
       );
+    }
+    const login = await this.prisma.user.findUnique({
+      where: { email },
+      select: { employeeId: true },
+    });
+    if (login && (!exceptId || login.employeeId !== exceptId)) {
+      throw new ConflictException('Email is already used by another login');
     }
   }
 }

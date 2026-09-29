@@ -7,6 +7,7 @@ export interface AuthUser {
   name: string;
   role: Role;
   employeeId: string | null;
+  mustChangePassword: boolean;
 }
 
 export interface AuthenticatedRequest extends Request {

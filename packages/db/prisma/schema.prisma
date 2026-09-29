@@ -126,16 +126,20 @@ enum OnboardingAssignee {
 
 /// Login account. Linked to an Employee record when the user is also staff.
 model User {
-  id           String    @id @default(uuid()) @db.Uuid
-  email        String    @unique
-  name         String
-  passwordHash String
-  role         Role
-  isActive     Boolean   @default(true)
-  employeeId   String?   @unique @db.Uuid
-  employee     Employee? @relation(fields: [employeeId], references: [id])
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                 String    @id @default(uuid()) @db.Uuid
+  email              String    @unique
+  name               String
+  passwordHash       String
+  role               Role
+  isActive           Boolean   @default(true)
+  /// Set when HR issues a temporary password; the API blocks everything else until it's changed.
+  mustChangePassword Boolean   @default(false)
+  passwordChangedAt  DateTime?
+  lastLoginAt        DateTime?
+  employeeId         String?   @unique @db.Uuid
+  employee           Employee? @relation(fields: [employeeId], references: [id])
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
 
   leaveRequested      LeaveRequest[]         @relation("LeaveRequestedBy")
   leaveDecided        LeaveRequest[]         @relation("LeaveDecidedBy")

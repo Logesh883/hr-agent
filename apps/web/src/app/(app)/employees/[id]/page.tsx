@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { toast } from "sonner";
+import { EmployeeAccessCard } from "@/components/access/employee-access";
 import { AttendanceCalendar } from "@/components/attendance/attendance-calendar";
 import { EmployeeDocuments } from "@/components/documents/employee-documents";
 import { ChangeHistory } from "@/components/employees/change-history";
@@ -185,6 +186,7 @@ function EmployeeDetail() {
               </CardContent>
             </Card>
           </div>
+          {can("access:manage") && <EmployeeAccessCard employee={e} />}
         </TabsContent>
         <TabsContent value="onboarding">
           <OnboardingPanel employeeId={e.id} />

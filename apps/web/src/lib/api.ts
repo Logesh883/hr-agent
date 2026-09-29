@@ -8,6 +8,7 @@ export class ApiRequestError extends Error {
     message: string,
     readonly issues: ApiError["issues"] = [],
     readonly problems: NonNullable<ApiError["problems"]> = [],
+    readonly code?: string,
   ) {
     super(message);
     this.name = "ApiRequestError";
@@ -58,7 +59,7 @@ async function toApiError(res: Response): Promise<ApiRequestError> {
   const message = Array.isArray(error?.message)
     ? error.message.join(", ")
     : (error?.message ?? res.statusText);
-  return new ApiRequestError(res.status, message, error?.issues, error?.problems);
+  return new ApiRequestError(res.status, message, error?.issues, error?.problems, error?.code);
 }
 
 /** Multipart upload (e.g. documents). */

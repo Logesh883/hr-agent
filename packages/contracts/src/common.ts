@@ -28,6 +28,8 @@ export interface ApiError {
   issues?: { path: string; message: string }[];
   /** Business-rule violations (e.g. leave problems), when the request was well-formed but not allowed. */
   problems?: { code: string; message: string }[];
+  /** Machine-readable reason, e.g. PASSWORD_CHANGE_REQUIRED. */
+  code?: string;
 }
 
 /** A login account, e.g. who requested or approved something. */

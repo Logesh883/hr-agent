@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_FILTER } from '@nestjs/core';
+import { AccessModule } from './access/access.module.js';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AttendanceModule } from './attendance/attendance.module.js';
@@ -30,6 +31,7 @@ import { StorageModule } from './storage/storage.module.js';
     AttendanceModule,
     PayrollModule,
     PoliciesModule,
+    AccessModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_FILTER, useClass: PrismaExceptionFilter }],

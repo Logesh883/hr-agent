@@ -10,8 +10,10 @@ import { ROLES, type Role } from '@hr/contracts';
 import request from 'supertest';
 import { App } from 'supertest/types.js';
 import { AppModule } from '../src/app.module.js';
+import { AccessService } from '../src/access/access.service.js';
 import { AttendanceService } from '../src/attendance/attendance.service.js';
 import { AuditService } from '../src/audit/audit.service.js';
+import { AuthService } from '../src/auth/auth.service.js';
 import { DepartmentsService } from '../src/departments/departments.service.js';
 import { DocumentsService } from '../src/documents/documents.service.js';
 import { EmployeesService } from '../src/employees/employees.service.js';
@@ -96,6 +98,11 @@ const endpoints: {
   { method: 'get', path: '/policies', allowed: ALL },
   { method: 'post', path: '/policies', body: { title: 'Leave Policy', category: 'LEAVE', effectiveFrom: '2027-01-01' }, allowed: HR_ONLY },
   { method: 'get', path: `/policies/${POLICY}/file`, allowed: ALL },
+  { method: 'get', path: `/employees/${ID}/access`, allowed: HR_ONLY },
+  { method: 'post', path: `/employees/${ID}/access`, body: { role: 'EMPLOYEE' }, allowed: HR_ONLY },
+  { method: 'patch', path: `/employees/${ID}/access`, body: { isActive: false }, allowed: HR_ONLY },
+  { method: 'post', path: `/employees/${ID}/access/reset-password`, allowed: HR_ONLY },
+  { method: 'post', path: '/auth/change-password', body: { currentPassword: 'x', newPassword: 'Longer-passw0rd' }, allowed: ALL },
 ];
 
 const userIdFor = (role: Role) =>
@@ -157,6 +164,10 @@ describe('RBAC', () => {
         ...stubService(['list', 'publish']),
         readFile: vi.fn().mockResolvedValue({ doc: { mimeType: 'text/plain', fileName: 'p.txt' }, data: Buffer.from('x') }),
       })
+      .overrideProvider(AccessService)
+      .useValue(stubService(['get', 'grant', 'update', 'resetPassword']))
+      .overrideProvider(AuthService)
+      .useValue(stubService(['login', 'changePassword']))
       .overrideProvider(AuditService)
       .useValue(stubService(['search', 'record']))
       .compile();

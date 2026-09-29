@@ -98,6 +98,12 @@ Built as vertical slices (API + tests + UI), in the order leave → documents �
 
 **Exit:** met. Every HR area in README §2 works through the admin UI without AI. Verified by 29 unit tests, 265 API end-to-end tests (including an RBAC matrix over every endpoint and role), and a 59-check browser run across HR, manager and employee journeys.
 
+## Added after Phase 2
+
+- [x] Role-aware user guide (`/guide`), generated from the permission map and shared rule constants
+- [x] App access: HR/admin give employees a login (work email + one-time temporary password), change role, reset password, turn access off; forced password change at first sign-in enforced by the API; password changes/resets end older sessions; archiving turns the login off; login email follows the work email; only admins manage admin logins; nobody manages their own access
+- [x] E2E tests use their own `hr_test` database and storage folder (migrate + seed before each run) instead of the dev database
+
 ## Phase 3 — Tool API (Contract with the AI Agent)
 
 - [ ] T3.1 Define all 13 tool schemas (input/output) in `packages/contracts`

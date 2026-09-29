@@ -42,7 +42,9 @@ Demo logins (password `Password123!`), also shown as one-click buttons on the si
 
 The seed is a demo company with realistic loose ends to work through: leave awaiting approval, documents to verify (including a bank letter whose name doesn't match), new hires mid-onboarding with overdue tasks, attendance anomalies and a pending correction, and payroll blockers. Uploaded files go to `storage/` (git-ignored). Re-running `pnpm db:seed` resets the demo records.
 
-Other commands: `pnpm test` (API unit + e2e; needs the seeded database), `pnpm typecheck`, `pnpm lint`, `pnpm db:studio`, `pnpm db:reset`.
+New employees don't get a login automatically: HR opens the employee, uses **App access → Give app access**, and hands over the one-time temporary password. The employee signs in with their work email and must choose their own password first.
+
+Other commands: `pnpm test` (API unit + e2e; e2e runs against a separate `hr_test` database and `storage-test/` folder, migrated and seeded automatically, so it never touches your dev data), `pnpm typecheck`, `pnpm lint`, `pnpm db:studio`, `pnpm db:reset`.
 
 | Path | What it is |
 | --- | --- |

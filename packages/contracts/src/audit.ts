@@ -13,6 +13,7 @@ export const AUDIT_ENTITY_TYPES = [
   'AttendanceRecord',
   'AttendanceCorrection',
   'PolicyDocument',
+  'User',
 ] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
 

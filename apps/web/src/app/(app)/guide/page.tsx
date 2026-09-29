@@ -49,6 +49,7 @@ const capabilityLabels: Record<Permission, string> = {
   "payroll:read": "Payroll preparation",
   "policy:read": "Read policies",
   "policy:manage": "Publish policies",
+  "access:manage": "Give app access, change roles, reset passwords",
 };
 
 const resolve = <T,>(value: T | ((ctx: GuideContext) => T) | undefined, ctx: GuideContext) =>

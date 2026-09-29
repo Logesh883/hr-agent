@@ -8,9 +8,13 @@ import type { AuthenticatedRequest, AuthUser } from './auth.types.js';
 
 export const IS_PUBLIC_KEY = 'isPublic';
 export const PERMISSIONS_KEY = 'permissions';
+export const ALLOW_PENDING_PASSWORD_KEY = 'allowPendingPassword';
 
 /** Skips authentication for this route. */
 export const Public = () => SetMetadata(IS_PUBLIC_KEY, true);
+
+/** Reachable while the user still has to replace a temporary password. */
+export const AllowPendingPasswordChange = () => SetMetadata(ALLOW_PENDING_PASSWORD_KEY, true);
 
 /** Requires the caller's role to grant every listed permission. */
 export const RequirePermission = (...permissions: Permission[]) =>

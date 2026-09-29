@@ -9,6 +9,7 @@ import {
   ClipboardCheck,
   Clock,
   FileText,
+  KeyRound,
   LayoutDashboard,
   LifeBuoy,
   LogOut,
@@ -135,6 +136,12 @@ function UserMenu() {
           <Link href="/guide">
             <LifeBuoy />
             User guide
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href="/change-password">
+            <KeyRound />
+            Change password
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => void signOut({ redirectTo: "/login" })}>

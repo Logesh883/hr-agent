@@ -1,3 +1,4 @@
+export * from './access.js';
 export * from './attendance.js';
 export * from './audit.js';
 export * from './auth.js';

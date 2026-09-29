@@ -99,6 +99,10 @@ export const guideSections: GuideSection[] = [
         body: "The menu on the left only lists the areas your role can use. The header has a light/dark theme switch and your account menu, where you can open this guide or sign out.",
       },
       {
+        title: "First sign-in and passwords",
+        body: "HR gives you a login using your work email and a one-time temporary password. The first time you sign in you must choose your own password (at least 10 characters, with a letter and a number); nothing else works until you do. You can change it any time from your account menu → Change password, which signs out your other sessions.",
+      },
+      {
         title: "Your session",
         body: "Sessions last 8 hours. When one expires you're sent back to the sign-in page with a note; sign in again to carry on. Anything the server refuses is explained on screen rather than failing silently.",
       },
@@ -164,6 +168,17 @@ export const guideSections: GuideSection[] = [
         show: (ctx) => ctx.can("employee:update"),
         body: "Open the employee and select Edit. Only the fields you change are saved and recorded in their history. If someone else saved changes while you were editing, you'll be told and the form reloads with their version, so nobody's work is overwritten.",
         tip: "A manager can't be set to someone who reports to the employee (directly or indirectly); the app blocks reporting loops.",
+      },
+      {
+        title: "Give app access",
+        show: (ctx) => ctx.can("access:manage"),
+        steps: (ctx) => [
+          "Creating an employee doesn't create a login. Open the employee and find App access on the Overview tab.",
+          `Select Give app access and choose a role (${ctx.role === "ADMIN" ? "any role" : "Employee, Manager or HR Operations; only an admin can grant Admin"}).`,
+          "A temporary password appears once. Share it privately along with their work email; they must choose their own password at first sign-in.",
+          "From the same card you can change their role, reset the password (signing them out everywhere) or turn access off. Changes apply on their next click.",
+        ],
+        tip: "You can't change your own access, and archiving an employee turns their login off automatically.",
       },
       {
         title: "Archive or reactivate",

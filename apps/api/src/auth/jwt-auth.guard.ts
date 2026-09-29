@@ -1,14 +1,15 @@
 import {
   CanActivate,
   ExecutionContext,
+  ForbiddenException,
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
-import type { AccessTokenClaims } from '@hr/contracts';
+import { PASSWORD_CHANGE_REQUIRED, type AccessTokenClaims } from '@hr/contracts';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { IS_PUBLIC_KEY } from './auth.decorators.js';
+import { ALLOW_PENDING_PASSWORD_KEY, IS_PUBLIC_KEY } from './auth.decorators.js';
 import type { AuthenticatedRequest } from './auth.types.js';
 
 /**
@@ -37,9 +38,9 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Missing bearer token');
     }
 
-    let claims: AccessTokenClaims;
+    let claims: AccessTokenClaims & { iat: number };
     try {
-      claims = await this.jwt.verifyAsync<AccessTokenClaims>(token);
+      claims = await this.jwt.verifyAsync<AccessTokenClaims & { iat: number }>(token);
     } catch {
       throw new UnauthorizedException('Invalid or expired token');
     }
@@ -53,10 +54,16 @@ export class JwtAuthGuard implements CanActivate {
         role: true,
         employeeId: true,
         isActive: true,
+        mustChangePassword: true,
+        passwordChangedAt: true,
       },
     });
     if (!user?.isActive) {
       throw new UnauthorizedException('Account is inactive');
+    }
+    // A password change or reset ends sessions started before it.
+    if (user.passwordChangedAt && claims.iat < Math.floor(user.passwordChangedAt.getTime() / 1000)) {
+      throw new UnauthorizedException('Your password was changed. Sign in again.');
     }
 
     request.user = {
@@ -65,7 +72,21 @@ export class JwtAuthGuard implements CanActivate {
       name: user.name,
       role: user.role,
       employeeId: user.employeeId,
+      mustChangePassword: user.mustChangePassword,
     };
+
+    // Temporary passwords unlock nothing but replacing themselves.
+    const allowPending = this.reflector.getAllAndOverride<boolean>(ALLOW_PENDING_PASSWORD_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (user.mustChangePassword && !allowPending) {
+      throw new ForbiddenException({
+        statusCode: 403,
+        message: 'Change your temporary password to continue.',
+        code: PASSWORD_CHANGE_REQUIRED,
+      });
+    }
     return true;
   }
 }

@@ -1,4 +1,4 @@
-import type { LoginResponse } from "@hr/contracts";
+import type { LoginResponse, SessionUser } from "@hr/contracts";
 import { loginRequestSchema } from "@hr/contracts";
 import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
@@ -58,11 +58,23 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user?.apiUser && user.accessToken && user.expiresAt) {
         token.apiUser = user.apiUser;
         token.accessToken = user.accessToken;
         token.expiresAt = user.expiresAt;
+      }
+      // After a password change the API issues a new token. Trust only what the
+      // API says about it, never user details sent from the browser.
+      if (trigger === "update" && typeof session?.accessToken === "string") {
+        const res = await fetch(`${API_URL}/auth/me`, {
+          headers: { Authorization: `Bearer ${session.accessToken}` },
+        }).catch(() => null);
+        if (res?.ok) {
+          token.apiUser = (await res.json()) as SessionUser;
+          token.accessToken = session.accessToken;
+          if (typeof session.expiresAt === "string") token.expiresAt = session.expiresAt;
+        }
       }
       // End the session when the API token expires.
       if (!token.expiresAt || Date.parse(token.expiresAt) <= Date.now()) {

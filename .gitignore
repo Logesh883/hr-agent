@@ -27,3 +27,4 @@ packages/db/src/generated/
 
 # Uploaded files (local storage driver)
 storage/
+storage-test/
