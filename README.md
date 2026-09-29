@@ -44,6 +44,8 @@ The seed is a demo company with realistic loose ends to work through: leave awai
 
 New employees don't get a login automatically: HR opens the employee, uses **App access → Give app access**, and hands over the one-time temporary password. The employee signs in with their work email and must choose their own password first.
 
+The AI service's `/health` works without an LLM; to talk to a model, set `LLM_PROVIDER`, `LLM_MODEL` and that provider's key, e.g. `GROQ_API_KEY` (free Groq, OpenRouter or Gemini keys; see `.env.example`), then `cd apps/ai && uv run hr-ai chat "What is loss of pay?"`.
+
 Other commands: `pnpm test:ai` (AI service tests), `pnpm test` (API unit + e2e; e2e runs against a separate `hr_test` database and `storage-test/` folder, migrated and seeded automatically, so it never touches your dev data), `pnpm typecheck`, `pnpm lint`, `pnpm db:studio`, `pnpm db:reset`.
 
 | Path | What it is |

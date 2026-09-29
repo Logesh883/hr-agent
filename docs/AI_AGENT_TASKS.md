@@ -18,6 +18,8 @@ Every module has the same shape:
 | **Pitfalls** | Mistakes almost everyone makes the first time. |
 | **Done when** | The exit criteria, usually tests plus a demo. |
 
+When a module is finished, its notes (what was built, how it works, why, and what went wrong) go in [docs/ai-modules/](ai-modules/README.md).
+
 Rules of thumb:
 
 - **Build it by hand once, then use the framework.** You write a tool-calling loop yourself (M3) before using LangGraph (M5), so you know what the framework does for you.
@@ -50,7 +52,7 @@ Effort figures are rough "focused days" to guide pacing; the whole plan is about
 | Language & runtime | Python **3.12**, managed with **uv** (`uv python install 3.12`) | The AI/ML ecosystem lags the newest Python; your system Python is 3.14. uv pins the version per project. |
 | Service | **FastAPI** in `apps/ai`, port 8000 | Async, typed (pydantic), fits the spec. |
 | Agent LLM | **Free hosted API** behind an OpenAI-compatible client. Candidates: Groq, Google Gemini (OpenAI-compatible endpoint), OpenRouter free models, Hugging Face Inference Providers | Reliable tool calling needs a capable model; free tiers give you one. Provider and model are env settings, so you can switch any time. |
-| Learning / offline LLM | **Hugging Face `transformers`** locally: `Qwen2.5-1.5B-Instruct` or `Qwen2.5-3B-Instruct` on your M4 (MPS) | Lets you see tokenizers, chat templates and sampling up close. Good for intent parsing experiments; too weak for multi-step tools. |
+| Learning / offline LLM | **None: hosted models only** (decided in M1). A local `transformers` model is optional bonus B3 | Chosen over a local Qwen model to keep the laptop setup light. The free hosted APIs report token usage, so tokens, sampling and latency are still measured, just not tokenizers up close. |
 | Embeddings | Hugging Face **`sentence-transformers`**: `BAAI/bge-small-en-v1.5` (384 dimensions) | Free, local, good quality. Swapped for a lighter ONNX runtime at deploy time (M13). |
 | Reranker | Hugging Face cross-encoder `BAAI/bge-reranker-base` | Shows how much reranking helps (you'll measure it). |
 | Vector store | **pgvector** in the existing Postgres (the docker image already includes it), in a separate **`ai` schema** | No new infrastructure. The AI service owns the `ai` schema (Alembic migrations) and never writes HR tables. |
@@ -64,7 +66,7 @@ Effort figures are rough "focused days" to guide pacing; the whole plan is about
 ```text
 Web app ──(user's token)──► AI service (FastAPI + LangGraph) ──(same token)──► HR API ──► PostgreSQL (HR tables)
                                    │                                               ▲
-                                   ├── LLM provider (free API / local HF model)     │ RBAC, rules, audit
+                                   ├── LLM provider (free hosted API)               │ RBAC, rules, audit
                                    ├── RAG: pgvector in `ai` schema ◄── policies ───┘
                                    └── Langfuse traces
 ```
@@ -108,7 +110,7 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 - [x] A0.1 `uv python install 3.12`; create the `apps/ai` uv project with ruff, pyright and pytest configured.
 - [x] A0.2 FastAPI app with `GET /health`; settings loaded from the root `.env` (`HR_API_URL`, `AI_PORT=8000`, `WEB_ORIGIN`); CORS for the web origin.
 - [x] A0.3 Typed HR API client: forwards a bearer token, and maps the API's error body (`statusCode`, `message`, `issues`, `problems`, `code`) into a Python exception type.
-- [x] A0.4 Root script `pnpm dev:ai` (runs `uv run python -m app --reload`, which starts uvicorn on `AI_PORT`); `pnpm dev` starts it with the web app and API.
+- [x] A0.4 Root script `pnpm dev:ai` (runs `uv run hr-ai serve --reload`, which starts uvicorn on `AI_PORT`); `pnpm dev` starts it with the web app and API.
 - [x] A0.5 Tests for health and the HR client (mocked with respx).
 
 **Check yourself**
@@ -117,9 +119,11 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 
 **Done when:** `uv run pytest` passes and `curl localhost:8000/health` works alongside the web app and API.
 
+**Notes:** [M0: Python service foundations](ai-modules/M0-python-service.md)
+
 ---
 
-## M1: LLM fundamentals (~3 days)
+## M1: LLM fundamentals (~3 days) ✅
 
 **Learn**
 - Tokens and tokenizers; context windows; why token counts drive cost and latency.
@@ -130,12 +134,12 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 - Hosted vs local trade-offs: quality, speed, cost, rate limits, privacy.
 
 **Build**
-- [ ] A1.1 Local Hugging Face experiment (script or notebook): load `Qwen2.5-1.5B-Instruct` with `transformers` on MPS, tokenize a prompt and count its tokens, apply the chat template and print the raw result, generate, vary temperature, measure tokens/s.
-- [ ] A1.2 `LLMClient` interface: `chat(messages, tools=None, response_format=None, temperature, max_tokens) → LLMResponse(text, tool_calls, usage, latency_ms)` plus a streaming variant. Two implementations: `OpenAICompatibleClient` (base URL + key + model, which covers the free providers) and `TransformersClient` (local).
-- [ ] A1.3 Provider chosen by env (`LLM_PROVIDER`, `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`); timeouts; retries with exponential backoff on 429 and 5xx; one JSON log line per call with tokens and latency.
-- [ ] A1.4 Prompts as versioned files in `prompts/` (name + version in front matter); every call logs which prompt version it used.
-- [ ] A1.5 Dev-only `POST /llm/chat` and a CLI (`uv run hr-ai chat "…"`).
-- [ ] A1.6 `FakeLLM` returning scripted responses. Every later module tests agent logic with it, without calling a model.
+- [x] A1.1 Hosted-model experiment (`experiments/m1_llm_basics.py`): what the system prompt costs in tokens, the same question 5× at temperature 0 vs 1, `max_tokens` truncation (`finish_reason: length`), and streaming time-to-first-token and tokens/s.
+- [x] A1.2 `LLMClient` interface: `chat(messages, tools=None, response_format=None, temperature, max_tokens) → LLMResponse(text, tool_calls, usage, latency_ms)` plus a streaming variant. One implementation, `OpenAICompatibleClient` (base URL + key + model, plain httpx), which covers every free provider.
+- [x] A1.3 Provider chosen by env (`LLM_PROVIDER` = `groq` / `openrouter` / `gemini` presets or `custom` with `LLM_BASE_URL`, plus `LLM_MODEL` and a key per provider: `GROQ_API_KEY`, `OPENROUTER_API_KEY`, `GEMINI_API_KEY`, falling back to `LLM_API_KEY`); timeouts; retries with exponential backoff on 429 and 5xx (honouring `Retry-After`); one JSON log line per call with tokens and latency.
+- [x] A1.4 Prompts as versioned files in `prompts/` (name + version in front matter); every call logs which prompt version it used.
+- [x] A1.5 Dev-only `POST /llm/chat` and a CLI (`uv run hr-ai chat "…"`).
+- [x] A1.6 `FakeLLM` returning scripted responses. Every later module tests agent logic with it, without calling a model.
 
 **Check yourself**
 - Why can the same prompt give different answers, and how do you make it (mostly) repeatable?
@@ -145,7 +149,9 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 
 **Pitfalls:** hard-coding one provider's SDK throughout the code; not setting timeouts; forgetting that free tiers rate-limit.
 
-**Done when:** the same `chat()` call works against a free hosted model and the local HF model, with logged usage.
+**Done when:** the same `chat()` call works against two free hosted providers by changing only env settings, with logged usage. Verified on Groq (`openai/gpt-oss-120b`, `qwen/qwen3.8-27b`) and OpenRouter (`nvidia/nemotron-3-super-120b-a12b:free`, `google/gemma-4-26b-a4b-it:free`, `poolside/laguna-s-2.1:free`).
+
+**Notes:** [M1: LLM fundamentals](ai-modules/M1-llm-fundamentals.md)
 
 ---
 
@@ -176,7 +182,7 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 
 **Pitfalls:** judging a prompt by one example; letting the model invent ids or emails; not giving the model today's date.
 
-**Done when:** intent accuracy ≥ 90% on the eval set with the hosted model (record the local model's score too, for comparison).
+**Done when:** intent accuracy ≥ 90% on the eval set with the hosted model (record a second free model's score too, for comparison).
 
 ---
 
@@ -435,7 +441,7 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 **Build**
 - [ ] A10.1 A 60–100 case dataset (`evals/cases.jsonl`) covering normal requests, ambiguity, missing information, conflicting documents, permission violations and tool failures. Each case lists the expected intent, tools and key arguments, whether approval is required, and final-state checks.
 - [ ] A10.2 Runner against `hr_test`, which records: intent, entity, tool-selection and argument accuracy; retrieval recall; groundedness (LLM judge with a rubric); completion rate; verification and approval correctness; tokens, latency and cost.
-- [ ] A10.3 Report (Markdown plus Langfuse datasets and scores) with a committed baseline. Compare two models (a free hosted model vs a local HF model) and two prompt versions.
+- [ ] A10.3 Report (Markdown plus Langfuse datasets and scores) with a committed baseline. Compare two free hosted models and two prompt versions.
 - [ ] A10.4 CI job running a fast subset whenever prompts or the graph change; it fails on regression beyond a threshold.
 
 **Check yourself**
