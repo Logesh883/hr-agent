@@ -55,5 +55,6 @@ Other commands: `pnpm test` (API unit + e2e; e2e runs against a separate `hr_tes
 | `packages/config` | Shared tsconfig and Prettier config |
 
 Task plan and progress for the web app: [docs/HR_WEB_APP_TASKS.md](docs/HR_WEB_APP_TASKS.md).
+Learning and build plan for the AI agent: [docs/AI_AGENT_TASKS.md](docs/AI_AGENT_TASKS.md).
 
 Target cost: ₹0/month within free-tier limits. Source specification: [docs/AI_HR_Operations_Employee_Project_Specification.pdf](docs/AI_HR_Operations_Employee_Project_Specification.pdf).
