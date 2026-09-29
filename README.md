@@ -20,7 +20,7 @@ HR admin ──► Next.js web app ──► NestJS HR API ──► PostgreSQL 
 
 ## Local Development
 
-Requires Node 22+, pnpm 10, and Docker.
+Requires Node 22+, pnpm 10, Docker, and [uv](https://docs.astral.sh/uv/) for the AI service (`uv python install 3.12`).
 
 ```bash
 pnpm install
@@ -28,7 +28,7 @@ cp .env.example .env    # then set JWT_SECRET and AUTH_SECRET: openssl rand -bas
 pnpm db:up              # PostgreSQL 16 + pgvector on localhost:5433
 pnpm db:migrate         # apply Prisma migrations
 pnpm db:seed            # demo company: people, leave, documents, onboarding, attendance, policies
-pnpm dev                # web on http://localhost:3000, api on http://localhost:4000
+pnpm dev                # web on http://localhost:3000, api on http://localhost:4000, ai on http://localhost:8000
 ```
 
 Demo logins (password `Password123!`), also shown as one-click buttons on the sign-in page:
@@ -44,12 +44,13 @@ The seed is a demo company with realistic loose ends to work through: leave awai
 
 New employees don't get a login automatically: HR opens the employee, uses **App access → Give app access**, and hands over the one-time temporary password. The employee signs in with their work email and must choose their own password first.
 
-Other commands: `pnpm test` (API unit + e2e; e2e runs against a separate `hr_test` database and `storage-test/` folder, migrated and seeded automatically, so it never touches your dev data), `pnpm typecheck`, `pnpm lint`, `pnpm db:studio`, `pnpm db:reset`.
+Other commands: `pnpm test:ai` (AI service tests), `pnpm test` (API unit + e2e; e2e runs against a separate `hr_test` database and `storage-test/` folder, migrated and seeded automatically, so it never touches your dev data), `pnpm typecheck`, `pnpm lint`, `pnpm db:studio`, `pnpm db:reset`.
 
 | Path | What it is |
 | --- | --- |
 | `apps/web` | Next.js admin UI (Auth.js, TanStack Query, shadcn/ui) |
 | `apps/api` | NestJS HR API (JWT auth, RBAC + data scope, business rules, audit, file storage) |
+| `apps/ai` | FastAPI AI agent service (Python 3.12, uv); calls the HR API with the signed-in user's token |
 | `packages/contracts` | Zod schemas, DTO types, roles and permissions shared by web and api |
 | `packages/db` | Prisma schema, migrations, seed |
 | `packages/config` | Shared tsconfig and Prettier config |

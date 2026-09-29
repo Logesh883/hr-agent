@@ -96,7 +96,7 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 
 ---
 
-## M0: Python service foundations (~1 day)
+## M0: Python service foundations (~1 day) ✅
 
 **Learn**
 - uv: projects, `pyproject.toml`, lockfiles, pinning a Python version, `uv run`.
@@ -105,11 +105,11 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 - pytest, `pytest-asyncio`, and `respx` for mocking HTTP; ruff (lint/format) and pyright (types).
 
 **Build**
-- [ ] A0.1 `uv python install 3.12`; create the `apps/ai` uv project with ruff, pyright and pytest configured.
-- [ ] A0.2 FastAPI app with `GET /health`; settings loaded from the root `.env` (`HR_API_URL`, `AI_PORT=8000`, `WEB_ORIGIN`); CORS for the web origin.
-- [ ] A0.3 Typed HR API client: forwards a bearer token, and maps the API's error body (`statusCode`, `message`, `issues`, `problems`, `code`) into a Python exception type.
-- [ ] A0.4 Root script `pnpm dev:ai` (runs `uv run uvicorn … --reload`) so the whole stack starts together.
-- [ ] A0.5 Tests for health and the HR client (mocked with respx).
+- [x] A0.1 `uv python install 3.12`; create the `apps/ai` uv project with ruff, pyright and pytest configured.
+- [x] A0.2 FastAPI app with `GET /health`; settings loaded from the root `.env` (`HR_API_URL`, `AI_PORT=8000`, `WEB_ORIGIN`); CORS for the web origin.
+- [x] A0.3 Typed HR API client: forwards a bearer token, and maps the API's error body (`statusCode`, `message`, `issues`, `problems`, `code`) into a Python exception type.
+- [x] A0.4 Root script `pnpm dev:ai` (runs `uv run python -m app --reload`, which starts uvicorn on `AI_PORT`); `pnpm dev` starts it with the web app and API.
+- [x] A0.5 Tests for health and the HR client (mocked with respx).
 
 **Check yourself**
 - When should a FastAPI handler be `async def` vs `def`?

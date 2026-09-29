@@ -1,0 +1,11 @@
+{
+  "name": "ai",
+  "private": true,
+  "description": "AI agent service (FastAPI, Python 3.12 via uv). pnpm scripts wrap uv so the stack starts together.",
+  "scripts": {
+    "dev": "uv run python -m app --reload",
+    "lint": "uv run ruff check . && uv run ruff format --check .",
+    "typecheck": "uv run pyright",
+    "test": "uv run pytest"
+  }
+}
