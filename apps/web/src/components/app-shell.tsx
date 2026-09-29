@@ -10,6 +10,7 @@ import {
   Clock,
   FileText,
   LayoutDashboard,
+  LifeBuoy,
   LogOut,
   Moon,
   Sun,
@@ -44,6 +45,7 @@ const nav: { href: string; label: string; icon: typeof Users; permission?: Permi
   { href: "/payroll", label: "Payroll prep", icon: Banknote, permission: "payroll:read" },
   { href: "/policies", label: "Policies", icon: BookOpen, permission: "policy:read" },
   { href: "/departments", label: "Departments", icon: Building2, permission: "department:read" },
+  { href: "/guide", label: "User guide", icon: LifeBuoy },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -129,6 +131,12 @@ function UserMenu() {
           </Badge>
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link href="/guide">
+            <LifeBuoy />
+            User guide
+          </Link>
+        </DropdownMenuItem>
         <DropdownMenuItem onSelect={() => void signOut({ redirectTo: "/login" })}>
           <LogOut />
           Sign out
