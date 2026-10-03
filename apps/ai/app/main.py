@@ -5,7 +5,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app import llm_routes
+from app import agent_routes, llm_routes
 from app.log import configure_logging
 from app.settings import Settings, get_settings
 from llm.base import LLMClient
@@ -43,6 +43,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(router)
+    app.include_router(agent_routes.router)
     if settings.ai_env == "development":
         app.include_router(llm_routes.router)
     return app

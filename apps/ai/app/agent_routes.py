@@ -1,0 +1,111 @@
+"""The authenticated natural-language entry point for the HR agent."""
+
+from datetime import date
+from typing import Annotated, cast, get_args
+
+import httpx
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from pydantic import BaseModel, Field
+
+from app.hr_client import HrApiClient, HrApiError, HrApiUnavailableError
+from app.llm_routes import get_llm
+from app.settings import Settings
+from intent.entity_resolution import resolve_entities_with_tools
+from intent.parser import parse_request
+from intent.prompt import Role
+from intent.schema import Entities, EntityField, Intent
+from llm.base import LLMClient, LLMError
+
+router = APIRouter(prefix="/agent", tags=["agent"])
+
+
+class ParseRequest(BaseModel):
+    request: str = Field(min_length=1, max_length=4000)
+
+
+class ParseResponse(BaseModel):
+    intent: Intent
+    entities: Entities
+    resolved_employee_ids: dict[str, str]
+    resolved_department_ids: dict[str, str]
+    missing_fields: list[EntityField]
+    confidence: float
+    clarifying_question: str | None
+    needs_clarification: bool
+    resolution_answer: str | None = None
+    waiting_for_user: bool = False
+    candidates: list[dict[str, str]] = []
+
+
+@router.post("/parse", response_model=ParseResponse)
+async def parse_agent_request(
+    body: ParseRequest,
+    request: Request,
+    llm: Annotated[LLMClient, Depends(get_llm)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> ParseResponse:
+    """Parse a request and resolve mentioned records as the authenticated HR API user."""
+    token = _bearer_token(authorization)
+    settings: Settings = request.app.state.settings
+    async with httpx.AsyncClient(
+        base_url=settings.hr_api_url, timeout=settings.hr_api_timeout
+    ) as http:
+        hr = HrApiClient(http, token)
+        try:
+            user = await hr.me()
+        except HrApiError as error:
+            raise _hr_http_error(error) from error
+        except HrApiUnavailableError as error:
+            raise HTTPException(503, "HR API is unavailable") from error
+
+        if user.role not in get_args(Role):
+            raise HTTPException(403, "This account does not have an agent role")
+        role = cast(Role, user.role)
+        today = date.today()
+        try:
+            parsed = await parse_request(llm, body.request, today=today, role=role)
+            resolution = None
+            if (
+                parsed.entities.people
+                or parsed.entities.manager
+                or parsed.entities.department
+                or parsed.intent is Intent.APPROVE_LEAVE
+            ):
+                resolution = await resolve_entities_with_tools(
+                    llm, hr, parsed, body.request, today=today
+                )
+        except LLMError as error:
+            raise HTTPException(502, "The language model could not process this request") from error
+        except HrApiError as error:
+            raise _hr_http_error(error) from error
+        except HrApiUnavailableError as error:
+            raise HTTPException(503, "HR API is unavailable") from error
+
+    return ParseResponse(
+        intent=parsed.intent,
+        entities=parsed.entities,
+        resolved_employee_ids=resolution.resolved_employee_ids if resolution else {},
+        resolved_department_ids=resolution.resolved_department_ids if resolution else {},
+        missing_fields=parsed.missing_fields,
+        confidence=parsed.confidence,
+        clarifying_question=parsed.clarifying_question,
+        needs_clarification=parsed.needs_clarification
+        or bool(resolution and resolution.waiting_for_user),
+        resolution_answer=resolution.answer if resolution else None,
+        waiting_for_user=resolution.waiting_for_user if resolution else False,
+        candidates=resolution.candidates if resolution else [],
+    )
+
+
+def _bearer_token(authorization: str | None) -> str:
+    if not authorization:
+        raise HTTPException(401, "Authorization bearer token is required")
+    scheme, separator, token = authorization.partition(" ")
+    if scheme.casefold() != "bearer" or not separator or not token.strip():
+        raise HTTPException(401, "Authorization must use a bearer token")
+    return token.strip()
+
+
+def _hr_http_error(error: HrApiError) -> HTTPException:
+    status = error.status_code if 400 <= error.status_code < 500 else 502
+    return HTTPException(status, error.message)

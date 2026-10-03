@@ -1,6 +1,6 @@
 # M2: Prompting and structured outputs
 
-**Status:** in progress. Done: A2.1–A2.4, including employee, manager, department and leave lookups through tool calling. Next: A2.5, the `/agent/parse` endpoint. Plan: [AI_AGENT_TASKS.md § M2](../AI_AGENT_TASKS.md#m2-prompting-and-structured-outputs-understanding-requests-3-days).
+**Status:** in progress. Done: A2.1–A2.5, including employee, manager and department resolution through tools and the authenticated `/agent/parse` endpoint. A2.6's 30-case dataset and scoring script are in place; next: run both provider evaluations and record the scores. Plan: [AI_AGENT_TASKS.md § M2](../AI_AGENT_TASKS.md#m2-prompting-and-structured-outputs-understanding-requests-3-days).
 
 ## In one paragraph
 
@@ -250,4 +250,30 @@ The model has never seen your employee table, so any id it makes up is unreliabl
 
 ## Next
 
-A2.5: expose the parsed intent and tool-resolved entities through `POST /agent/parse`.
+### A2.5: `POST /agent/parse`
+
+The AI API now accepts `POST http://localhost:8000/agent/parse` with `{"request":"..."}` and the HR user's bearer token in the `Authorization` header. It checks the token with `GET /auth/me`, gets the role from the HR API (the caller cannot choose a role in the request body), then returns the intent, entities, resolved employee/department ids, missing fields and clarification status. The same token is forwarded to every HR lookup, so the HR API remains the authority for permissions.
+
+To try it, sign in against the HR API to get an access token, then send that token to `/agent/parse`:
+
+```sh
+curl -X POST http://localhost:8000/agent/parse \
+  -H 'Authorization: Bearer <access-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"request":"Approve Rahul\u0027s leave from November 2 to November 6, 2026"}'
+```
+
+If a name matches more than one employee, the response includes `waiting_for_user: true` and the candidate list. The caller can ask HR to select one; this endpoint does not approve leave.
+
+### A2.6: intent and entity evaluation
+
+`evals/intents.jsonl` contains 30 requests with expected intent and entity values, including an ambiguous request and out-of-scope requests. The runner calls the same `parse_request()` used by the app. It reports intent accuracy plus micro entity precision and recall: predicted field/value pairs are compared with the labelled field/value pairs.
+
+Run the same set against each provider, with `apps/ai` as the working directory:
+
+```sh
+uv run python -m evals.run_intent_eval --provider groq --model qwen/qwen3.8-27b
+uv run python -m evals.run_intent_eval --provider openrouter --model <free-model-id>
+```
+
+The runner defaults `today` to `2026-10-03` so relative dates are repeatable. It uses the provider keys in the root `.env`, prints mismatches as well as the summary, and makes sequential calls to respect free-tier limits. A2.6's final check is at least 90% intent accuracy on the selected hosted model and recording the second model's score.

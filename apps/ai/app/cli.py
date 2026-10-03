@@ -170,7 +170,9 @@ async def _parse(args: argparse.Namespace) -> int:
                 ):
                     print(f"\n{result.answer}")
                     try:
-                        selection = input("Select a candidate by number (or press Enter to stop): ")
+                        selection = await asyncio.to_thread(
+                            input, "Select a candidate by number (or press Enter to stop): "
+                        )
                     except EOFError:
                         selection = ""
                     if selection.isdigit() and 1 <= int(selection) <= len(result.candidates):

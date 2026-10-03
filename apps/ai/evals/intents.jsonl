@@ -1,0 +1,30 @@
+{"id":"onboard_complete","request":"Please add Leena as a UX Researcher joining November 2 in Pune, reporting to Rahul.","role":"HR_OPS","intent":"onboard_employee","entities":{"people":["Leena"],"job_title":"UX Researcher","joining_date":"2026-11-02","location":"Pune","manager":"Rahul"}}
+{"id":"onboard_partial","request":"We hired Vivek as a Data Engineer in Bangalore.","role":"HR_OPS","intent":"onboard_employee","entities":{"people":["Vivek"],"job_title":"Data Engineer","location":"Bangalore"}}
+{"id":"onboard_date","request":"Start a new hire record for Mira, a Payroll Analyst, joining November 9 in Chennai.","role":"HR_OPS","intent":"onboard_employee","entities":{"people":["Mira"],"job_title":"Payroll Analyst","joining_date":"2026-11-09","location":"Chennai"}}
+{"id":"update_location","request":"Pooja has moved; change her office location to Chennai.","role":"HR_OPS","intent":"update_employee","entities":{"people":["Pooja"],"location":"Chennai"}}
+{"id":"update_department","request":"Move Arun Kumar into the Product department.","role":"HR_OPS","intent":"update_employee","entities":{"people":["Arun Kumar"],"department":"Product"}}
+{"id":"update_manager","request":"Set Kavya Shetty's manager to Meera Iyer.","role":"HR_OPS","intent":"update_employee","entities":{"people":["Kavya Shetty"],"manager":"Meera Iyer"}}
+{"id":"find_location","request":"Show me employees who work in Hyderabad.","role":"HR_OPS","intent":"find_employees","entities":{"location":"Hyderabad"}}
+{"id":"find_manager_team","request":"Who reports to Rahul Sharma?","role":"MANAGER","intent":"find_employees","entities":{"manager":"Rahul Sharma"}}
+{"id":"leave_range","request":"I want annual leave from October 20 through October 21.","role":"EMPLOYEE","intent":"request_leave","entities":{"leave_type":"ANNUAL","start_date":"2026-10-20","end_date":"2026-10-21"}}
+{"id":"leave_next_friday","request":"I need sick leave next Friday.","role":"EMPLOYEE","intent":"request_leave","entities":{"leave_type":"SICK","start_date":"2026-10-09"}}
+{"id":"leave_missing_type","request":"Can I take a day off on October 22?","role":"EMPLOYEE","intent":"request_leave","entities":{"start_date":"2026-10-22"}}
+{"id":"leave_lop","request":"Please book loss of pay leave for me on October 30.","role":"EMPLOYEE","intent":"request_leave","entities":{"leave_type":"UNPAID","start_date":"2026-10-30"}}
+{"id":"approve_ambiguous_name","request":"Approve Rahul's leave from November 2 to November 6.","role":"HR_OPS","intent":"approve_leave","entities":{"people":["Rahul"],"start_date":"2026-11-02","end_date":"2026-11-06"}}
+{"id":"approve_person_type_date","request":"Approve Sneha Patel's casual leave for October 9.","role":"MANAGER","intent":"approve_leave","entities":{"people":["Sneha Patel"],"leave_type":"CASUAL","start_date":"2026-10-09"}}
+{"id":"approve_unspecified_person","request":"Approve the leave request that's waiting in my queue.","role":"HR_OPS","intent":"approve_leave","entities":{}}
+{"id":"balance_self_annual","request":"How many annual leave days do I have left?","role":"EMPLOYEE","intent":"leave_balance","entities":{"leave_type":"ANNUAL"}}
+{"id":"balance_person_sick","request":"Check Sneha's remaining sick leave balance.","role":"HR_OPS","intent":"leave_balance","entities":{"people":["Sneha"],"leave_type":"SICK"}}
+{"id":"attendance_self_day","request":"Show my attendance for October 1.","role":"EMPLOYEE","intent":"attendance_review","entities":{"start_date":"2026-10-01","end_date":"2026-10-01"}}
+{"id":"attendance_department_month","request":"List missing punches in Engineering for September 2026.","role":"HR_OPS","intent":"attendance_review","entities":{"department":"Engineering","start_date":"2026-09-01","end_date":"2026-09-30"}}
+{"id":"attendance_person_day","request":"Why was Sneha Patel flagged for attendance on September 29?","role":"MANAGER","intent":"attendance_review","entities":{"people":["Sneha Patel"],"start_date":"2026-09-29","end_date":"2026-09-29"}}
+{"id":"correction_self","request":"Correct my missing clock-out from October 2.","role":"EMPLOYEE","intent":"attendance_correction","entities":{"start_date":"2026-10-02","end_date":"2026-10-02"}}
+{"id":"correction_person","request":"Fix Divya Menon's check-in for September 30.","role":"HR_OPS","intent":"attendance_correction","entities":{"people":["Divya Menon"],"start_date":"2026-09-30","end_date":"2026-09-30"}}
+{"id":"document_pan","request":"Has Vikram Singh submitted his PAN card?","role":"HR_OPS","intent":"document_status","entities":{"people":["Vikram Singh"],"document_type":"PAN_CARD"}}
+{"id":"document_bank_details","request":"Which new hires are missing bank details?","role":"HR_OPS","intent":"document_status","entities":{"document_type":"BANK_DETAILS"}}
+{"id":"policy_annual_carryover","request":"What does the policy say about carrying annual leave into next year?","role":"EMPLOYEE","intent":"policy_question","entities":{"leave_type":"ANNUAL"}}
+{"id":"policy_probation","request":"According to the handbook, how long is the probation period?","role":"EMPLOYEE","intent":"policy_question","entities":{}}
+{"id":"payroll_current_month","request":"Is October payroll ready to run?","role":"HR_OPS","intent":"payroll_readiness","entities":{"start_date":"2026-10-01","end_date":"2026-10-31"}}
+{"id":"payroll_prior_month","request":"What is blocking September 2026 payroll?","role":"HR_OPS","intent":"payroll_readiness","entities":{"start_date":"2026-09-01","end_date":"2026-09-30"}}
+{"id":"ambiguous_request","request":"Can you take care of Rahul's request?","role":"HR_OPS","intent":"unknown","entities":{"people":["Rahul"]}}
+{"id":"out_of_scope_poem","request":"Write a short poem about the monsoon rain.","role":"EMPLOYEE","intent":"unknown","entities":{}}

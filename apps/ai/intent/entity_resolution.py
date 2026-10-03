@@ -164,12 +164,17 @@ async def resolve_entities_with_tools(
         if not response.tool_calls:
             if not tool_calls_made:
                 return EntityResolutionResult(
-                    answer="I couldn't resolve the HR records because the model did not request a lookup."
+                    answer=(
+                        "I couldn't resolve the HR records because the model did not "
+                        "request a lookup."
+                    )
                 )
             return EntityResolutionResult(
                 answer=response.text or "I couldn't resolve the requested HR records.",
                 resolved_employee_ids={
-                    query: matches[0].id for query, matches in employees.items() if len(matches) == 1
+                    query: matches[0].id
+                    for query, matches in employees.items()
+                    if len(matches) == 1
                 }
                 | (
                     {human_selected_query.casefold(): human_selected_candidate["id"]}
@@ -230,7 +235,9 @@ async def resolve_entities_with_tools(
                 )
 
     return EntityResolutionResult(
-        answer="I couldn't finish resolving the HR records. Please narrow the request and try again."
+        answer=(
+            "I couldn't finish resolving the HR records. Please narrow the request and try again."
+        )
     )
 
 
@@ -370,7 +377,8 @@ def _ambiguity_question(call: ToolCall, candidates: list[dict[str, str]]) -> str
         ]
         return f"I found multiple matching departments:\n{chr(10).join(lines)}\nWhich one?"
     lines = [
-        f"{index}. {item['full_name']} ({item['employee_code']}, {item['job_title']}, {item['location']})"
+        f"{index}. {item['full_name']} ({item['employee_code']}, "
+        f"{item['job_title']}, {item['location']})"
         for index, item in enumerate(candidates, 1)
     ]
     return f"I found multiple people matching that name:\n{chr(10).join(lines)}\nWhich one?"
