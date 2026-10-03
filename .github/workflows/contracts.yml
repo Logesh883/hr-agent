@@ -1,0 +1,44 @@
+name: Contract schemas
+
+on:
+  pull_request:
+    paths:
+      - 'packages/contracts/**'
+      - 'apps/ai/contracts/**'
+      - 'apps/ai/pyproject.toml'
+      - 'apps/ai/uv.lock'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/contracts.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/contracts/**'
+      - 'apps/ai/contracts/**'
+      - 'apps/ai/pyproject.toml'
+      - 'apps/ai/uv.lock'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/contracts.yml'
+
+jobs:
+  generated-contracts-current:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.22.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pnpm install --frozen-lockfile
+      - run: uv sync --dev
+        working-directory: apps/ai
+      - run: pnpm contracts:generate
+      - run: git diff --exit-code -- packages/contracts/json-schema/api.json apps/ai/contracts/generated.py

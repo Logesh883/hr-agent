@@ -200,7 +200,7 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 - Traces and spans: seeing every LLM call and tool call in a run.
 
 **Build**
-- [ ] A3.1 *(HR API)* Export JSON Schemas from `@hr/contracts` (`z.toJSONSchema`), then generate pydantic models from them (`datamodel-code-generator`). Add a CI check that regenerating produces no diff, so Python and TypeScript can't drift.
+- [ ] A3.1 *(HR API)* Export JSON Schemas from `@hr/contracts` (`z.toJSONSchema`), then generate pydantic models from them (`datamodel-code-generator`). Add a CI check that regenerating produces no diff, so Python and TypeScript can't drift. **Started:** request/query validators are exported and generated; response types that are plain TypeScript interfaces still need runtime schemas and export coverage.
 - [ ] A3.2 General tool framework: `Tool(name, description, input_model, risk, run(ctx, args))`, a registry, rendering of schemas for the LLM, pydantic validation **before** execution, a uniform `ToolResult` (ok / data / an error message the model can use), and per-tool timeouts. A2.4 has a small, bounded tool loop for entity lookup; M3 generalizes it.
 - [ ] A3.3 Read-only tools, each wrapping an existing endpoint with the user's token:
 

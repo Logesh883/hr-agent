@@ -12,7 +12,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput"
+    "dev": "tsc -p tsconfig.json --watch --preserveWatchOutput",
+    "schemas:export": "pnpm build && node scripts/export-json-schemas.mjs"
   },
   "dependencies": {
     "zod": "^4.6.5"

@@ -8,6 +8,7 @@
     "dev:api": "pnpm --filter api dev",
     "dev:ai": "pnpm --filter ai dev",
     "build:packages": "pnpm --filter @hr/contracts --filter @hr/db build",
+    "contracts:generate": "pnpm --filter @hr/contracts build && node packages/contracts/scripts/export-json-schemas.mjs && pnpm --filter ai exec uv run datamodel-codegen --input ../../packages/contracts/json-schema/api.json --input-file-type jsonschema --output-model-type pydantic_v2.BaseModel --disable-timestamp --output contracts/generated.py",
     "build": "pnpm build:packages && pnpm --filter web --filter api build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm build:packages && pnpm --filter api exec tsc --noEmit && pnpm --filter web exec tsc --noEmit && pnpm --filter ai typecheck",
