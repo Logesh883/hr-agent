@@ -171,8 +171,7 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
   - **also**: `missing_fields`, `confidence` and `clarifying_question`. The model returns `ModelParse` (everything except `missing_fields`); code adds `missing_fields` from a per-intent `REQUIRED_FIELDS` table.
 - [x] A2.2 Intent prompt with few-shot examples taken from the spec's scenarios (e.g. "Onboard Priya as a Software Engineer joining October 12, reporting to Rahul in Bangalore"), with today's date and the user's role injected. (`prompts/intent.md`: 13 examples covering every intent, plus a 14-day calendar and month ranges so the model looks dates up instead of calculating them; `intent/prompt.py`, `intent/parser.py`, `uv run hr-ai parse "…"`.)
 - [x] A2.3 Parse and validate the model output; on schema failure, retry once with the validation error. If the retry fails, return `unknown` with a clarifying question (`apps/ai/intent/parser.py`).
-- [ ] A2.4 Entity resolution **in code**, not by the LLM: names to employee ids through `GET /employees?q=`, departments by name or code. Ambiguous matches return candidates (two "Rahul"s → ask).
-  - Done early for leave approval (`intent/leave_approval.py`): the person's name is resolved to an employee (exact name beats substring match), then their pending requests are looked up; none → say so, one → select it, several (not narrowed by dates or type) → list them and ask which. Still to do: departments, managers, the other intents.
+- [x] A2.4 Entity resolution through **LLM-selected tools** (`intent/entity_resolution.py`): the model requests employee, manager, department, and pending-leave lookups; Python validates each tool call and executes it against the HR API as the signed-in user. Exact names/codes beat substring matches. Ambiguous matches return candidates and pause for HR (two "Rahul"s → ask); in a terminal, HR can choose a numbered employee and the tool loop resumes with that selected record. The model cannot pick one or run a dependent leave lookup until HR clarifies. Actual write actions such as approving a request remain in M6.
 - [ ] A2.5 `POST /agent/parse` → intent, entities, resolved ids, missing information.
 - [ ] A2.6 First eval set: 30 labelled requests (`evals/intents.jsonl`), including ambiguous and out-of-scope ones. A script prints intent accuracy and entity precision/recall. Run it against both providers.
 
@@ -202,7 +201,7 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 
 **Build**
 - [ ] A3.1 *(HR API)* Export JSON Schemas from `@hr/contracts` (`z.toJSONSchema`), then generate pydantic models from them (`datamodel-code-generator`). Add a CI check that regenerating produces no diff, so Python and TypeScript can't drift.
-- [ ] A3.2 Tool framework: `Tool(name, description, input_model, risk, run(ctx, args))`, a registry, rendering of schemas for the LLM, pydantic validation **before** execution, a uniform `ToolResult` (ok / data / an error message the model can use), and per-tool timeouts.
+- [ ] A3.2 General tool framework: `Tool(name, description, input_model, risk, run(ctx, args))`, a registry, rendering of schemas for the LLM, pydantic validation **before** execution, a uniform `ToolResult` (ok / data / an error message the model can use), and per-tool timeouts. A2.4 has a small, bounded tool loop for entity lookup; M3 generalizes it.
 - [ ] A3.3 Read-only tools, each wrapping an existing endpoint with the user's token:
 
   | Tool | Endpoint |

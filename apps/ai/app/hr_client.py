@@ -120,6 +120,14 @@ class Employee(EmployeeRef):
     status: str
 
 
+class Department(ApiModel):
+    id: str
+    name: str
+    code: str
+    status: str
+    employee_count: int
+
+
 class LeaveRequest(ApiModel):
     id: str
     employee: EmployeeRef
@@ -188,6 +196,11 @@ class HrApiClient:
         """Active and probation employees whose name, email or code contains every word of q."""
         data = await self.get("/employees", params={"q": q, "pageSize": page_size})
         return [Employee.model_validate(item) for item in data["items"]]
+
+    async def list_departments(self) -> list[Department]:
+        """List departments visible to the signed-in user for name/code resolution."""
+        data = await self.get("/departments")
+        return [Department.model_validate(item) for item in data]
 
     async def pending_leave_to_decide(
         self,

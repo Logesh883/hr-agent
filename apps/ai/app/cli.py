@@ -4,7 +4,7 @@ uv run hr-ai serve --reload            # the API on AI_HOST:AI_PORT
 uv run hr-ai chat "What is LOP?"       # one message to the configured model
 uv run hr-ai models                    # model ids the configured provider offers
 uv run hr-ai parse "Approve Sneha's leave" --role MANAGER   # intent + entities
-uv run hr-ai parse "Approve Sneha's leave" --login manager@hr.local   # + which request
+uv run hr-ai parse "Approve Sneha's leave" --login manager@hr.local   # + tool-based lookups
 """
 
 import argparse
@@ -22,7 +22,7 @@ from app.hr_client import HrApiClient, HrApiError, HrApiUnavailableError
 from app.llm_routes import build_messages
 from app.log import configure_logging
 from app.settings import get_settings
-from intent.leave_approval import choose_leave_to_approve
+from intent.entity_resolution import resolve_entities_with_tools
 from intent.parser import parse_request
 from intent.prompt import Role
 from intent.schema import Intent
@@ -59,7 +59,7 @@ def main(argv: list[str] | None = None) -> None:
         "--login",
         metavar="EMAIL",
         help="sign in to the HR API as this user (password from HR_PASSWORD or a prompt); "
-        "uses their role, and for approvals looks up their pending leave",
+        "uses their permissions for tool-based employee, department and leave lookups",
     )
 
     args = parser.parse_args(argv)
@@ -148,15 +148,47 @@ async def _parse(args: argparse.Namespace) -> int:
                 role = cast(Role, login.user.role)
                 print(f"signed in as {login.user.name} ({role})", file=sys.stderr)
 
-            parsed = await parse_request(
-                llm, args.request, today=args.today or date.today(), role=role
-            )
+            today = args.today or date.today()
+            parsed = await parse_request(llm, args.request, today=today, role=role)
             print(parsed.model_dump_json(indent=2))
             print(f"needs_clarification: {parsed.needs_clarification}", file=sys.stderr)
 
-            if hr and parsed.intent is Intent.APPROVE_LEAVE:
-                choice = await choose_leave_to_approve(hr, parsed)
-                print(f"\n[{choice.outcome}]\n{choice.message}")
+            if hr and (
+                parsed.entities.people
+                or parsed.entities.manager
+                or parsed.entities.department
+                or parsed.intent is Intent.APPROVE_LEAVE
+            ):
+                result = await resolve_entities_with_tools(
+                    llm, hr, parsed, args.request, today=today
+                )
+                if (
+                    result.waiting_for_user
+                    and result.candidates
+                    and ("full_name" in result.candidates[0] or "name" in result.candidates[0])
+                    and sys.stdin.isatty()
+                ):
+                    print(f"\n{result.answer}")
+                    try:
+                        selection = input("Select a candidate by number (or press Enter to stop): ")
+                    except EOFError:
+                        selection = ""
+                    if selection.isdigit() and 1 <= int(selection) <= len(result.candidates):
+                        selected = result.candidates[int(selection) - 1]
+                        selected_employee = "full_name" in selected
+                        result = await resolve_entities_with_tools(
+                            llm,
+                            hr,
+                            parsed,
+                            args.request,
+                            today=today,
+                            human_selected_candidate=selected if selected_employee else None,
+                            human_selected_department=selected if not selected_employee else None,
+                            human_selected_query=result.candidate_query,
+                        )
+                    else:
+                        result.answer = "No candidate was selected. No dependent lookup was run."
+                print(f"\n[entity resolution]\n{result.answer}")
         except (LLMError, ValidationError, HrApiError, HrApiUnavailableError) as error:
             print(f"error: {error}", file=sys.stderr)
             return 1

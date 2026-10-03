@@ -1,6 +1,6 @@
 # M2: Prompting and structured outputs
 
-**Status:** in progress. Done: A2.1–A2.3, and leave-approval resolution (part of A2.4, done early). Next: A2.4 entity resolution for the remaining intents. Plan: [AI_AGENT_TASKS.md § M2](../AI_AGENT_TASKS.md#m2-prompting-and-structured-outputs-understanding-requests-3-days).
+**Status:** in progress. Done: A2.1–A2.4, including employee, manager, department and leave lookups through tool calling. Next: A2.5, the `/agent/parse` endpoint. Plan: [AI_AGENT_TASKS.md § M2](../AI_AGENT_TASKS.md#m2-prompting-and-structured-outputs-understanding-requests-3-days).
 
 ## In one paragraph
 
@@ -66,7 +66,7 @@ Example, for the spec's onboarding request:
 | --- | --- | --- |
 | **`missing_fields` computed in code** (`REQUIRED_FIELDS` table), not returned by the model | "The LLM proposes; code decides." A model can claim nothing is missing; a table can't. It's also testable and the same every time. | Asking the model to list missing fields |
 | **Two classes**: `ModelParse` (model output) and `ParsedRequest` (+ code's additions) | The schema sent to the model must not contain fields the model shouldn't fill. A test checks `missing_fields` isn't in it. | One class with the model told to leave a field alone |
-| **Names, not ids**, in entities | The model can't know ids and would invent them (a plan pitfall). A2.4 resolves names against the HR API in code, and asks when "Rahul" matches two people. | `manager_id` in the schema |
+| **Names, not ids**, in entities | The model can't know ids and would invent them. A2.4 lets the model request a search tool; Python executes it against the HR API and returns real ids. The application pauses when "Rahul" matches two people. | `manager_id` in the schema |
 | **Separate `joining_date` vs `start_date`/`end_date`** | Onboarding's date means something different from a leave range; separate fields make evaluation (A2.6) exact | One generic `dates` list |
 | **Leave and document types use the API's enums** (`ANNUAL`, `PAN_CARD`, …) | Values pass straight into API calls; field descriptions map synonyms (earned/privilege leave → `ANNUAL`, loss of pay → `UNPAID`). A test reads `packages/contracts` and fails if the TypeScript enums change. | Free text ("earned leave") mapped later |
 | **Added `document_type`** (not in the plan's entity list) | `document_status` requests often name one ("has Arjun's PAN card been verified?") | |
@@ -194,57 +194,52 @@ Two things were wrong:
 | --- | --- |
 | `needs_clarification` is also true when the model asks a question. When code and model disagree, ask: an extra question costs less than a wrong approval. | `ParsedRequest.needs_clarification` in `intent/schema.py` |
 | Prompt `intent@2`: "Approving leave needs only whose leave it is. Dates and leave type narrow the choice; when missing, don't ask for them." Plus an example "Approve Farhan's leave" with no question. | `prompts/intent.md` |
-| The choice of **which** request is made in code, from real records | `intent/leave_approval.py` (`choose_leave_to_approve`) |
-| Typed `search_employees()` and `pending_leave_to_decide()` | `app/hr_client.py` |
-| `hr-ai parse … --login EMAIL` signs in as that user, uses their role, and for approvals prints the choice | `app/cli.py` |
+| The model chooses which lookup tool to call; tool arguments are validated and Python runs the API request | `intent/entity_resolution.py` and `app/hr_client.py` |
+| A small bounded loop sends tool results back to the model. The signed-in user's token applies to every lookup. | `intent/entity_resolution.py` |
+| `hr-ai parse … --login EMAIL` signs in as that user, uses their role, and runs the tool-calling resolution flow | `app/cli.py` |
 
 ### How the choice works
 
 ```text
-"Approve Sneha's leave for 5th October"
-   │ parse (model):  approve_leave, people=[Sneha], start_date=2026-10-05
+"Approve Rahul's leave for today"
+   │ parse (model): approve_leave, people=[Rahul], start_date=2026-10-03
    ▼
-choose_leave_to_approve (code, as the signed-in user)
-   ├─ several people named ("Sneha and Arun")      → one_at_a_time: "Whose leave first?"
-   ├─ GET /employees?q=Sneha
-   │     prefer exact first/last/full-name matches ("Neha" must not pick "Sneha")
-   │     0 → person_not_found      2+ → person_ambiguous: list them, "Which one?"
-   ├─ GET /leave-requests?view=approvals&employeeId=…[&type][&from&to]
-   │     (view=approvals: only PENDING requests this user may decide)
-   ├─ nothing matches the dates/type, but others are pending
-   │                                              → choose: "No pending request matches 5 Oct 2026. Sneha Patel has 1 …"
-   ├─ 0 pending                                   → none: "Sneha Patel has no pending leave requests that you can approve."
-   ├─ exactly 1 (person named)                    → selected: "Found Sneha Patel's Annual leave, 19-23 Oct 2026 (5 days)."
-   └─ 2+ (or nobody named)                        → choose:
-          Sneha Patel has 2 leave requests pending:
-          1. Casual leave, 5-6 Oct 2026 (2 days)
-          2. Annual leave, 19-23 Oct 2026 (5 days)
-          Which one should I approve?
+model tool call: search_employees({"query": "Rahul"})
+   │ Python validates the arguments and calls GET /employees?q=Rahul
+   ├─ one match → return the real employee id to the model; it can request pending leave
+   ├─ no matches → model explains that no visible employee was found
+   └─ two Rahuls → application pauses and asks HR to choose; no leave lookup runs yet
+
+In the terminal, HR selects a numbered candidate. The application passes that exact result back
+to the model, which can then call `list_pending_leave_requests` with the selected id. The tool
+applies the parsed date and leave type, then returns pending requests the signed-in user may decide.
+Several matching requests are listed for HR to choose. A2.4 tools only look up data; actually
+approving a leave request is a later write action in M6.
 ```
 
 "Selected" doesn't approve anything. Approving is a write, so M6 adds a confirmation and approval step before the agent calls `POST /leave-requests/:id/approve`.
 
 ### Tested
 
-`tests/test_leave_approval.py` covers every branch against a mocked HR API: one selected; several and no dates → asks with a numbered list; dates and type narrow to one (and are sent as `from`/`to`/`type`); details match nothing → shows what's pending; nothing pending; nobody named → lists all approvals; unknown person; exact name beats substring; two Rahuls → asks; several people → one at a time; date formatting across months and years.
+`tests/test_leave_approval.py` documents the earlier deterministic selection rules against a mocked HR API. The CLI now uses the tool-calling loop described above; ambiguous people are intercepted by the application and presented to HR before any dependent tool can run.
 
-### Live (2026-09-29, Qwen3.8 27B, signed in as the manager Rahul)
+### Earlier parser-only live check (2026-09-29, Qwen3.8 27B)
 
-| Request | Parse | Choice |
+| Request | Parsed intent and entities |
 | --- | --- | --- |
-| Approve Sneha's leave | approve_leave, Sneha, **no question**, `needs_clarification: False` | none |
-| Approve Sneha's leave for 5th October | + start/end 2026-10-05 | none |
-| Approve the leave | people empty, asks "Whose…?", `needs_clarification: True` | none |
-| Approve Neha's leave | Neha (resolved to Neha Joshi, not Sneha) | none |
+| Approve Sneha's leave | approve_leave, people=[Sneha], no unnecessary date question |
+| Approve Sneha's leave for 5th October | approve_leave, people=[Sneha], dates=2026-10-05 |
+| Approve the leave | approve_leave, people=[], asks "Whose…?" |
+| Approve Neha's leave | approve_leave, people=[Neha] |
 
-Every answer was **none**, and that was correct: in the dev database every seeded request had already been approved or rejected (checked directly with `GET /leave-requests`). To see `selected` and `choose` live, create one or two pending requests for Sneha (sign in as `employee@hr.local`) and rerun, or reset the demo data with `pnpm db:seed`.
+These rows show only the intent parser's output, before the A2.4 tool-calling resolution flow was added. Employee matches and pending requests come from the HR API at runtime, so they depend on the signed-in user's access and current records.
 
 ## Check yourself (answered as tasks finish)
 
 <details>
 <summary>Why resolve "Rahul" to an id in code instead of asking the model for an id?</summary>
 
-The model has never seen your employee table, so any id it gives is invented. Even with the table in the prompt, it could pick the wrong Rahul silently. Code queries the HR API (`GET /employees?q=Rahul`) with the user's permissions, gets real ids, and when there are two matches it **asks** instead of guessing. The model's job is to notice that a person called Rahul was mentioned. (Answered in full after A2.4.)
+The model has never seen your employee table, so any id it makes up is unreliable. It asks to use `search_employees`; Python checks that request and runs `GET /employees?q=Rahul` with the signed-in user's permissions. If two Rahuls match, the application shows both and pauses. After HR identifies one, the model can use that real id in a later tool call. The model chooses which tool to ask for; the tool implementation is the part that talks to the API.
 </details>
 
 <details>
@@ -255,4 +250,4 @@ The model has never seen your employee table, so any id it gives is invented. Ev
 
 ## Next
 
-A2.3: validate the model's JSON; on failure, retry once with the validation error in the conversation; if it still fails, return `unknown` with a clarifying question.
+A2.5: expose the parsed intent and tool-resolved entities through `POST /agent/parse`.
