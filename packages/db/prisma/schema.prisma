@@ -203,8 +203,12 @@ model Employee {
 /// Append-only record of every mutation, by a human or the AI agent.
 model AuditLog {
   id         String    @id @default(uuid()) @db.Uuid
+  /// AI when the call came from the AI agent (X-Agent-Run-Id header); actorId is still the
+  /// user it acted for.
   actorType  ActorType
   actorId    String?   @db.Uuid
+  /// The agent run that made the change (ai.workflow_run.id), for AI entries.
+  agentRunId String?   @db.Uuid
   action     String
   entityType String
   entityId   String    @db.Uuid
@@ -214,7 +218,27 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@index([actorId])
+  @@index([agentRunId])
   @@index([timestamp])
+}
+
+/// Idempotency-Key header → the response it produced, per user, so a retried write
+/// (network blip, an agent retrying a step) returns the first result instead of acting twice.
+model IdempotencyKey {
+  userId      String   @db.Uuid
+  key         String
+  method      String
+  path        String
+  /// sha256 of method, path and body: the same key with a different request is refused.
+  requestHash String
+  /// IN_PROGRESS while the first request runs (a concurrent duplicate gets 409), then COMPLETED.
+  state       String
+  statusCode  Int?
+  response    Json?
+  createdAt   DateTime @default(now())
+
+  @@id([userId, key])
+  @@index([createdAt])
 }
 
 /// Named counters for human-readable codes (e.g. EMP-0001).

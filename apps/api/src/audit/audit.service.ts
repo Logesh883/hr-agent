@@ -7,6 +7,7 @@ import type {
 } from '@hr/contracts';
 import type { Prisma } from '@hr/db';
 import type { AuthUser } from '../auth/auth.types.js';
+import { currentAgentRunId } from '../common/agent-context.js';
 import { PrismaService, type Tx } from '../prisma/prisma.service.js';
 
 type Snapshot = Record<string, unknown>;
@@ -29,14 +30,18 @@ export class AuditService {
    * audit entry and the change commit (or roll back) together.
    */
   async record(tx: Tx, event: AuditEvent): Promise<void> {
+    const agentRunId = currentAgentRunId();
     await tx.auditLog.create({
       data: {
-        actorType: 'USER',
+        // The agent acts as the user (their token), so the actor stays the user; AI marks how.
+        actorType: agentRunId ? 'AI' : 'USER',
         actorId: event.actor.id,
+        agentRunId,
         action: event.action,
         entityType: event.entityType,
         entityId: event.entityId,
-        before: (event.before ?? undefined) as Prisma.InputJsonValue | undefined,
+        before: (event.before ?? undefined) as
+          Prisma.InputJsonValue | undefined,
         after: (event.after ?? undefined) as Prisma.InputJsonValue | undefined,
       },
     });
@@ -72,6 +77,7 @@ export class AuditService {
         id: r.id,
         actorType: r.actorType,
         actorId: r.actorId,
+        agentRunId: r.agentRunId,
         actorName: r.actorId ? (actorNames.get(r.actorId) ?? null) : null,
         action: r.action,
         entityType: r.entityType as AuditEntityType,

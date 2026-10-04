@@ -29,6 +29,8 @@ export interface AuditLogEntry {
   actorType: ActorType;
   actorId: string | null;
   actorName: string | null;
+  /** The AI agent run that made the change (actorType AI). */
+  agentRunId: string | null;
   action: string;
   entityType: AuditEntityType;
   entityId: string;
