@@ -139,8 +139,8 @@ async def test_agent_loop_against_the_real_api(http: httpx.AsyncClient) -> None:
 
 async def test_write_tools_go_through_the_tool_api(http: httpx.AsyncClient) -> None:
     """Phase 3: every agent write is a `POST /tools/:name` call, audited as AI with the tool's
-    name and the run id. Creates a throwaway employee in hr_test (the API's e2e setup
-    re-seeds it) and changes it through each employee tool."""
+    name and the run id. Creates a throwaway employee in hr_test, changes it through each
+    employee tool, and archives it at the end (the API has no delete)."""
     from tools.hr_write import DEPARTMENT_TOOL, WRITE_TOOLS
     from tools.registry import ToolRegistry
 
@@ -189,3 +189,9 @@ async def test_write_tools_go_through_the_tool_api(http: httpx.AsyncClient) -> N
     seen = {(e["toolName"], e["actorType"], e["agentRunId"]) for e in audit["items"]}
     for tool in ("create_employee", "change_manager", "change_department", "update_employee"):
         assert (tool, "AI", run_id) in seen, seen
+
+    current = await hr.get(f"/employees/{employee_id}")
+    await hr.post(
+        f"/employees/{employee_id}/archive",
+        {"version": current["version"], "reason": "integration test"},
+    )

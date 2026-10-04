@@ -468,15 +468,15 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 
 ---
 
-## M12: Command Center integration (~3 days, alongside web Phase 4)
+## M12: Command Center integration (~3 days, alongside web Phase 4) ✅ (5 of 6 demos live; documents need M9)
 
 **Learn**
 - Streaming UX for agents; showing plans, evidence and approvals so people can trust (and correct) the agent.
 
 **Build**
-- [ ] A12.1 Contract in `@hr/contracts`: run request, event stream types (intent, plan, evidence, approval required, tool started/finished, verification, final answer), approval decision.
-- [ ] A12.2 Auth between web and AI service: the web app sends the user's HR API token; the AI service checks it with `GET /auth/me` and uses it for tools.
-- [ ] A12.3 Scripted runs of the six portfolio demo scenarios (README §17). The UI itself is web Phase 4 (T4.6).
+- [x] A12.1 Contract in `@hr/contracts`: run request, event stream types (intent, plan, evidence, approval required, tool started/finished, verification, final answer), approval decision.
+- [x] A12.2 Auth between web and AI service: the web app sends the user's HR API token; the AI service checks it with `GET /auth/me` and uses it for tools.
+- [x] A12.3 Scripted runs of the six portfolio demo scenarios (README §17). The UI itself is web Phase 4 (T4.6).
 
 **Done when:** all six demo scenarios run end to end from the web app.
 

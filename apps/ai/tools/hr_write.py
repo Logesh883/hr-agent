@@ -335,13 +335,26 @@ async def create_leave_request(ctx: ToolContext, args: CreateLeaveInput) -> dict
     preview = api.LeavePreview.model_validate(
         await ctx.hr.post("/leave-requests/preview", _leave_body(args))
     )
-    if preview.problems:
-        raise ToolError(
-            "The leave request breaks the rules: " + "; ".join(p.message for p in preview.problems)
-        )
-    data = await _call(ctx, "create_leave_request", _leave_body(args))
+    refusal = "The leave request breaks the rules: " + "; ".join(
+        p.message for p in preview.problems
+    )
+    if preview.problems and not _maybe_ours(ctx, preview):
+        raise ToolError(refusal)
+    try:
+        data = await _call(ctx, "create_leave_request", _leave_body(args))
+    except HrApiError as error:
+        if preview.problems and 400 <= error.status_code < 500:
+            raise ToolError(refusal) from error
+        raise
     leave = api.LeaveRequest.model_validate(data)
     return {"id": str(leave.id), "status": leave.status, "days": leave.days}
+
+
+def _maybe_ours(ctx: ToolContext, preview: api.LeavePreview) -> bool:
+    """An overlap may be this very step's request: an earlier attempt reached the API but its
+    answer was lost (A7.3). Sending again under the same Idempotency-Key replays that answer;
+    if the key is new, the API refuses the overlap itself and nothing is created."""
+    return ctx.idempotency_key is not None and all(p.code == "OVERLAP" for p in preview.problems)
 
 
 class DecideLeaveInput(ToolInput):

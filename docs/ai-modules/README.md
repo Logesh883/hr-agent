@@ -15,6 +15,7 @@ One file per finished module of the [learning and build plan](../AI_AGENT_TASKS.
 | M8 | [Guardrails](M8-guardrails.md) | Per-role tool allow-list from the shared permission map, intent-level refusals and write scope, instruction quarantine and `<data>` fencing for policy text, self-approval guard, PII masking in traces and logs, token/time/step budgets and per-user rate limits, 19-case red-team eval (live run pending) |
 | M9 | (skipped for now) | |
 | M10 | [Evaluation](M10-evaluation.md) | 70-case end-to-end dataset over seven categories, code graders for 13 metrics plus a rubric LLM judge, repeats for variance, model and prompt-version comparison in one report, Langfuse datasets/scores, CI fast subset gated on a committed baseline; found and fixed the Gemini 3 tool-call signature bug |
+| M12 | [Command Center](M12-command-center.md) | Run contract in `@hr/contracts`, browser → AI service with the user's token, Command Center / approval inbox / audit log pages with a live SSE timeline; agent writes through the HR Tool API (`POST /tools/:name`, audited with the tool name); one shared risk policy; five portfolio demos scripted and passing live |
 
 ## How each note is laid out
 

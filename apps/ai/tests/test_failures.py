@@ -205,7 +205,7 @@ def hr_api(sneha: SnehaRecord) -> Iterator[respx.MockRouter]:
     with respx.mock(base_url=BASE_URL, assert_all_called=False) as api:
         api.get("/employees", params={"q": "Sneha"}).respond(json=page(SNEHA))
         api.get("/employees", params={"q": "Arun"}).respond(json=page(ARUN))
-        api.post("/leave-requests/preview").respond(json=PREVIEW)
+        api.post("/leave-requests/preview", name="preview").respond(json=PREVIEW)
         api.post(
             "/tools/create_leave_request", json__startDate="2026-10-12", name="create_first"
         ).respond(200, json=leave())
@@ -339,6 +339,32 @@ async def test_a_lost_response_is_retried_and_the_api_replays_the_first_answer(
     outcome, _ = await run(graph, http)
 
     assert hr_api["create_first"].call_count == 3
+    assert outcome.values["results"]["s2"]["status"] == "verified"
+
+
+async def test_a_lost_response_isnt_mistaken_for_an_overlap_on_retry(
+    http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter
+) -> None:
+    # The first attempt created the request but its answer was lost. On the retry the
+    # preview sees that request as an overlap; sent again under the same key, the API
+    # replays the first answer instead of the agent reporting "not submitted".
+    overlap = PREVIEW | {
+        "problems": [{"code": "OVERLAP", "message": "Overlaps with pending leave"}]
+    }
+    hr_api["preview"].mock(
+        side_effect=[httpx.Response(200, json=PREVIEW)] + [httpx.Response(200, json=overlap)] * 3
+    )
+    hr_api["create_first"].mock(
+        side_effect=[
+            httpx.ReadTimeout("timed out"),
+            httpx.Response(200, json=leave(), headers={"Idempotent-Replayed": "true"}),
+        ]
+    )
+
+    outcome, _ = await run(graph, http)
+
+    first, second = sent(hr_api, "POST", "/tools/create_leave_request")[:2]
+    assert first.headers["idempotency-key"] == second.headers["idempotency-key"]
     assert outcome.values["results"]["s2"]["status"] == "verified"
 
 
