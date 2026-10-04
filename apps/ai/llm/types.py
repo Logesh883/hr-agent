@@ -12,6 +12,9 @@ class ToolCall(BaseModel):
     name: str
     # Raw JSON text exactly as the model produced it; it may be invalid (M3 validates it).
     arguments: str
+    # Provider data that must come back unchanged with the call on the next turn (Gemini 3's
+    # thought signatures arrive as `extra_content`). Opaque to us.
+    extra_content: dict[str, Any] | None = None
 
 
 class Message(BaseModel):
@@ -48,6 +51,7 @@ class Message(BaseModel):
                     "type": "function",
                     "function": {"name": call.name, "arguments": call.arguments},
                 }
+                | ({"extra_content": call.extra_content} if call.extra_content else {})
                 for call in self.tool_calls
             ]
         if self.tool_call_id:

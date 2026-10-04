@@ -32,6 +32,7 @@ class _WireFunction(BaseModel):
 class _WireToolCall(BaseModel):
     id: str
     function: _WireFunction
+    extra_content: dict[str, Any] | None = None
 
 
 class _WireMessage(BaseModel):
@@ -143,7 +144,10 @@ class OpenAICompatibleClient(LLMClient):
             text=choice.message.content,
             tool_calls=[
                 ToolCall(
-                    id=call.id, name=call.function.name, arguments=call.function.arguments or "{}"
+                    id=call.id,
+                    name=call.function.name,
+                    arguments=call.function.arguments or "{}",
+                    extra_content=call.extra_content,
                 )
                 for call in choice.message.tool_calls or []
             ],

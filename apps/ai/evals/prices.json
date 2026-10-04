@@ -1,0 +1,7 @@
+{
+  "_note": "USD per million tokens [input, output], approximate list prices used only to estimate cost in the report. The free tiers used in development cost nothing; check the provider's pricing page before relying on these.",
+  "openai/gpt-oss-120b": [0.15, 0.75],
+  "openai/gpt-oss-20b": [0.1, 0.5],
+  "llama-3.3-70b-versatile": [0.59, 0.79],
+  "qwen/qwen3-32b": [0.29, 0.59]
+}

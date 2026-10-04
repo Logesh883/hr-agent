@@ -254,3 +254,84 @@ def create_exporter(settings: Settings) -> TraceExporter:
         public_key=settings.langfuse_public_key,
         secret_key=settings.langfuse_secret_key.get_secret_value(),
     )
+
+
+class LangfuseApi:
+    """Langfuse's public REST API for evals (A10.3) and user feedback (A11.2): datasets,
+    dataset runs and scores. Like the exporter, it never raises: a Langfuse outage only
+    costs the copy of the results kept there."""
+
+    def __init__(self, *, host: str, public_key: str, secret_key: str) -> None:
+        self._http = httpx.AsyncClient(base_url=host, auth=(public_key, secret_key), timeout=10.0)
+        self._datasets: set[str] = set()
+
+    async def aclose(self) -> None:
+        await self._http.aclose()
+
+    async def _post(self, path: str, body: dict[str, Any]) -> bool:
+        try:
+            response = await self._http.post(path, json=body)
+        except httpx.HTTPError as error:
+            logger.warning(
+                "langfuse.api_failed", extra={"fields": {"path": path, "error": repr(error)}}
+            )
+            return False
+        if response.is_error:
+            logger.warning(
+                "langfuse.api_failed",
+                extra={
+                    "fields": {
+                        "path": path,
+                        "status": response.status_code,
+                        "body": response.text[:200],
+                    }
+                },
+            )
+            return False
+        return True
+
+    async def score(
+        self, trace_id: str, name: str, value: float, comment: str | None = None
+    ) -> bool:
+        body: dict[str, Any] = {
+            "traceId": trace_id,
+            "name": name,
+            "value": value,
+            "dataType": "NUMERIC",
+        }
+        if comment:
+            body["comment"] = comment
+        return await self._post("/api/public/scores", body)
+
+    async def dataset_item(
+        self, dataset: str, item_id: str, input: Any, expected: Any, metadata: Any = None
+    ) -> bool:
+        if dataset not in self._datasets:
+            await self._post("/api/public/v2/datasets", {"name": dataset})
+            self._datasets.add(dataset)
+        return await self._post(
+            "/api/public/dataset-items",
+            {
+                "datasetName": dataset,
+                "id": item_id,
+                "input": input,
+                "expectedOutput": expected,
+                "metadata": metadata,
+            },
+        )
+
+    async def dataset_run_item(self, run_name: str, item_id: str, trace_id: str) -> bool:
+        return await self._post(
+            "/api/public/dataset-run-items",
+            {"runName": run_name, "datasetItemId": item_id, "traceId": trace_id},
+        )
+
+
+def create_langfuse_api(settings: Settings) -> LangfuseApi | None:
+    if not (settings.langfuse_public_key and settings.langfuse_secret_key):
+        return None
+    return LangfuseApi(
+        host=settings.langfuse_base_url,
+        public_key=settings.langfuse_public_key,
+        secret_key=settings.langfuse_secret_key.get_secret_value(),
+    )

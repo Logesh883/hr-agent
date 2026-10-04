@@ -13,6 +13,8 @@ One file per finished module of the [learning and build plan](../AI_AGENT_TASKS.
 | M6 | [Writes and approval](M6-writes-approval.md) | HR API: AI audit entries with run id, Idempotency-Key; eleven write tools with previews; risk policy file; approval node (approve / reject / edit, stored); "never invent data" provenance checks that ask instead; Onboard Priya live on hr_test |
 | M7 | [Verification and recovery](M7-verification-recovery.md) | Read-back expectations per write, error kinds mapped to retry / re-read / stop, backoff with jitter under idempotency keys, safe-only compensation, per-step completion summary, LLM-down fallback, fault-injection tests and a live "tool failure" demo via an injecting transport |
 | M8 | [Guardrails](M8-guardrails.md) | Per-role tool allow-list from the shared permission map, intent-level refusals and write scope, instruction quarantine and `<data>` fencing for policy text, self-approval guard, PII masking in traces and logs, token/time/step budgets and per-user rate limits, 19-case red-team eval (live run pending) |
+| M9 | (skipped for now) | |
+| M10 | [Evaluation](M10-evaluation.md) | 70-case end-to-end dataset over seven categories, code graders for 13 metrics plus a rubric LLM judge, repeats for variance, model and prompt-version comparison in one report, Langfuse datasets/scores, CI fast subset gated on a committed baseline; found and fixed the Gemini 3 tool-call signature bug |
 
 ## How each note is laid out
 

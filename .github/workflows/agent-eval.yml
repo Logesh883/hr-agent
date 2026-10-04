@@ -1,0 +1,120 @@
+name: Agent eval
+
+# A10.4: whenever the agent's prompts, graph, tools or eval set change, run the fast subset
+# of the end-to-end eval against a freshly seeded database and fail on a regression beyond
+# the threshold, compared with the committed baseline (apps/ai/evals/baseline.json).
+#
+# Needs repository secrets GROQ_API_KEY (the model under test, the same one as the
+# baseline) and GEMINI_API_KEY (policy embeddings). Without them (e.g. a fork), only the
+# eval's own unit tests run.
+
+on:
+  pull_request:
+    paths:
+      - 'apps/ai/prompts/**'
+      - 'apps/ai/graphs/**'
+      - 'apps/ai/agent/**'
+      - 'apps/ai/tools/**'
+      - 'apps/ai/intent/**'
+      - 'apps/ai/rag/**'
+      - 'apps/ai/evals/**'
+      - '.github/workflows/agent-eval.yml'
+  workflow_dispatch:
+
+env:
+  EVAL_MODEL: openai/gpt-oss-20b
+  EVAL_THRESHOLD: '0.10'
+
+jobs:
+  eval-code:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: uv sync --dev
+        working-directory: apps/ai
+      - run: uv run pytest -q tests/test_agent_eval.py tests/test_guardrails.py
+        working-directory: apps/ai
+
+  fast-subset:
+    needs: eval-code
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: hr
+          POSTGRES_PASSWORD: hr
+          POSTGRES_DB: hr_test
+        ports: ['5433:5432']
+        options: >-
+          --health-cmd "pg_isready -U hr -d hr_test" --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgresql://hr:hr@localhost:5433/hr_test
+      AI_DATABASE_URL: postgresql://hr:hr@localhost:5433/hr_test
+      JWT_SECRET: ci-only-not-a-secret-ci-only-not-a-secret
+      STORAGE_DIR: storage-test
+      API_PORT: '4100'
+      HR_API_URL: http://localhost:4100
+      HR_PASSWORD: Password123!
+      AI_SERVICE_PASSWORD: Password123!
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+    steps:
+      - name: Skip without model keys
+        if: env.GROQ_API_KEY == '' || env.GEMINI_API_KEY == ''
+        run: echo "::notice::No GROQ_API_KEY / GEMINI_API_KEY secret; the live eval is skipped."
+      - uses: actions/checkout@v4
+        if: env.GROQ_API_KEY != '' && env.GEMINI_API_KEY != ''
+      - uses: pnpm/action-setup@v4
+        if: env.GROQ_API_KEY != '' && env.GEMINI_API_KEY != ''
+        with:
+          version: 10.22.0
+      - uses: actions/setup-node@v4
+        if: env.GROQ_API_KEY != '' && env.GEMINI_API_KEY != ''
+        with:
+          node-version: 22
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v6
+        if: env.GROQ_API_KEY != '' && env.GEMINI_API_KEY != ''
+      - uses: actions/setup-python@v5
+        if: env.GROQ_API_KEY != '' && env.GEMINI_API_KEY != ''
+        with:
+          python-version: '3.12'
+      - name: Database, seed, HR API, AI schema and policy index
+        if: env.GROQ_API_KEY != '' && env.GEMINI_API_KEY != ''
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build:packages
+          pnpm --filter @hr/db migrate:deploy
+          pnpm db:seed
+          pnpm --filter api build
+          (cd apps/api && nohup node dist/main > ../../api.log 2>&1 &)
+          (cd apps/ai && uv sync --dev && uv run alembic upgrade head)
+          for i in $(seq 1 30); do curl -sf localhost:4100/health && break; sleep 2; done
+          (cd apps/ai && uv run hr-ai ingest)
+      - name: Fast subset vs baseline
+        if: env.GROQ_API_KEY != '' && env.GEMINI_API_KEY != ''
+        working-directory: apps/ai
+        run: |
+          gate=()
+          if [ -f evals/baseline.json ]; then
+            gate=(--baseline evals/baseline.json --threshold "$EVAL_THRESHOLD")
+          else
+            echo "::warning::No evals/baseline.json yet: reporting only, no regression gate."
+          fi
+          uv run python -m evals.run_agent_eval --fast --models "$EVAL_MODEL" "${gate[@]}" \
+            --report ../../agent-eval-ci.md --results-dir ../../eval-results
+      - uses: actions/upload-artifact@v4
+        if: always() && env.GROQ_API_KEY != ''
+        with:
+          name: agent-eval
+          path: |
+            agent-eval-ci.md
+            eval-results/
+            api.log

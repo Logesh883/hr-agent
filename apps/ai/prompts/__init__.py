@@ -53,9 +53,24 @@ class Prompt:
         return _PLACEHOLDER.sub(lambda m: str(values[m.group(1)]), self.template)
 
 
+# Evals swap in other prompt versions from here (A10.3); None in normal operation.
+_override_dir: Path | None = None
+
+
+def use_prompt_overrides(directory: Path | None) -> None:
+    """Prompts found in `directory` replace the built-in ones (for comparing versions)."""
+    global _override_dir
+    _override_dir = directory
+    load_prompt.cache_clear()
+
+
 @cache
 def load_prompt(name: str, directory: Path = PROMPTS_DIR) -> Prompt:
     path = directory / f"{name}.md"
+    if directory == PROMPTS_DIR and _override_dir is not None:
+        override = _override_dir / f"{name}.md"
+        if override.is_file():
+            path = override
     if not path.is_file():
         raise PromptError(f"No prompt file {path}")
     match = _FRONT_MATTER.match(path.read_text(encoding="utf-8"))

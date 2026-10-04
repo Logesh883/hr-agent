@@ -409,7 +409,7 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 
 ---
 
-## M9: Document AI: OCR, extraction and cross-checks (~4 days)
+## M9: Document AI: OCR, extraction and cross-checks (~4 days) ⏭️ skipped for now
 
 **Learn**
 - PDFs with a text layer vs scanned images; OCR with Tesseract (and PaddleOCR as an alternative); basic image preprocessing.
@@ -431,7 +431,7 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 
 ---
 
-## M10: Evaluation and quality engineering (~4 days)
+## M10: Evaluation and quality engineering (~4 days) ✅ (full-set run pending quota)
 
 **Learn**
 - Eval-driven development: offline datasets, online feedback, and why "it looked fine" isn't evidence.
@@ -439,10 +439,10 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 - Noise: repeat runs and report variance; cost and latency are quality metrics too.
 
 **Build**
-- [ ] A10.1 A 60–100 case dataset (`evals/cases.jsonl`) covering normal requests, ambiguity, missing information, conflicting documents, permission violations and tool failures. Each case lists the expected intent, tools and key arguments, whether approval is required, and final-state checks.
-- [ ] A10.2 Runner against `hr_test`, which records: intent, entity, tool-selection and argument accuracy; retrieval recall; groundedness (LLM judge with a rubric); completion rate; verification and approval correctness; tokens, latency and cost.
-- [ ] A10.3 Report (Markdown plus Langfuse datasets and scores) with a committed baseline. Compare two free hosted models and two prompt versions.
-- [ ] A10.4 CI job running a fast subset whenever prompts or the graph change; it fails on regression beyond a threshold.
+- [x] A10.1 A 60–100 case dataset (`evals/cases.jsonl`) covering normal requests, ambiguity, missing information, conflicting documents, permission violations and tool failures. Each case lists the expected intent, tools and key arguments, whether approval is required, and final-state checks.
+- [x] A10.2 Runner against `hr_test`, which records: intent, entity, tool-selection and argument accuracy; retrieval recall; groundedness (LLM judge with a rubric); completion rate; verification and approval correctness; tokens, latency and cost.
+- [x] A10.3 Report (Markdown plus Langfuse datasets and scores) with a committed baseline. Compare two free hosted models and two prompt versions.
+- [x] A10.4 CI job running a fast subset whenever prompts or the graph change; it fails on regression beyond a threshold.
 
 **Check yourself**
 - Why build the eval set *before* tuning prompts?

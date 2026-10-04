@@ -301,3 +301,18 @@ async def test_error_includes_openrouter_upstream_reason(llm: OpenAICompatibleCl
         LLMError, match="Provider returned error: model is temporarily rate-limited"
     ):
         await llm.chat(MESSAGES)
+
+
+def test_provider_extra_content_on_tool_calls_goes_back_unchanged() -> None:
+    # Gemini 3 (OpenAI-compatible endpoint) rejects the next turn unless each tool call's
+    # thought signature is sent back exactly as it came (found by the M10 eval).
+    from llm.types import Message, ToolCall
+
+    signature = {"google": {"thought_signature": "c2lnbmF0dXJl"}}
+    call = ToolCall(id="c1", name="search_employee", arguments="{}", extra_content=signature)
+
+    wire = Message(role="assistant", tool_calls=[call]).to_wire()
+
+    assert wire["tool_calls"][0]["extra_content"] == signature
+    plain = Message(role="assistant", tool_calls=[call.model_copy(update={"extra_content": None})])
+    assert "extra_content" not in plain.to_wire()["tool_calls"][0]
