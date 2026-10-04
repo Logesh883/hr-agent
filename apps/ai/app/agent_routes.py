@@ -18,8 +18,13 @@ from intent.prompt import Role
 from intent.schema import Entities, EntityField, Intent
 from llm.base import LLMClient, LLMError
 from llm.types import Usage
+from rag.chunking import Chunker
+from rag.db import create_engine
+from rag.embeddings import EmbeddingConfigError, EmbeddingError, create_embedder
+from rag.ingest import ingest_policies
 from rag.retrieval import PolicyRetriever
 from rag.service import create_policy_retriever
+from rag.store import PolicyStore
 from tools.base import ToolContext
 from tracing.langfuse import TraceExporter
 
@@ -149,6 +154,73 @@ async def ask(
         usage=run.usage,
         trace_id=run.trace_id,
     )
+
+
+class IngestPoliciesRequest(BaseModel):
+    chunker: Chunker = "heading"
+    # Default: RAG_CHUNK_TOKENS, the size search uses.
+    chunk_size: int | None = Field(default=None, ge=16, le=2048)
+
+
+class IngestPoliciesResponse(BaseModel):
+    chunker: str
+    chunk_size: int
+    embedding_model: str
+    versions: int
+    embedded: int
+    unchanged: int
+    removed: int
+    chunks: int
+    failed: list[str]
+
+
+@router.post("/policies/ingest", response_model=IngestPoliciesResponse)
+async def ingest_policy_documents(
+    body: IngestPoliciesRequest,
+    request: Request,
+    authorization: Annotated[str | None, Header()] = None,
+) -> IngestPoliciesResponse:
+    """Re-index the HR policies for search (A4.2), e.g. after publishing a new version.
+
+    Only users who may publish policies (`policy:manage`: HR, admins) can trigger it. The
+    documents themselves are fetched as the least-privilege service login, not as the
+    caller: indexing must not depend on who pressed the button.
+    """
+    settings: Settings = request.app.state.settings
+    async with httpx.AsyncClient(
+        base_url=settings.hr_api_url, timeout=settings.hr_api_timeout
+    ) as http:
+        user = await _signed_in_user(HrApiClient(http, _bearer_token(authorization)))
+        if "policy:manage" not in user.permissions:
+            raise HTTPException(403, "Only HR can re-index policies")
+        if settings.ai_service_password is None:
+            raise HTTPException(503, "AI_SERVICE_PASSWORD is not configured")
+        try:
+            embedder = create_embedder(settings)
+        except EmbeddingConfigError as error:
+            raise HTTPException(503, str(error)) from error
+        store = PolicyStore(create_engine(settings.ai_db_url))
+        try:
+            login = await HrApiClient(http).login(
+                settings.ai_service_email, settings.ai_service_password.get_secret_value()
+            )
+            report = await ingest_policies(
+                HrApiClient(http, login.access_token),
+                store,
+                embedder,
+                chunker=body.chunker,
+                chunk_size=body.chunk_size or settings.rag_chunk_tokens,
+            )
+        except EmbeddingError as error:
+            raise HTTPException(502, "The embeddings provider failed") from error
+        except HrApiError as error:
+            raise _hr_http_error(error) from error
+        except HrApiUnavailableError as error:
+            raise HTTPException(503, "HR API is unavailable") from error
+        finally:
+            await embedder.aclose()
+            await store.aclose()
+    return IngestPoliciesResponse.model_validate(report.__dict__)
 
 
 def get_policy_retriever(request: Request, llm: LLMClient) -> PolicyRetriever | None:

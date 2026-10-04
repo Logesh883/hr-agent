@@ -253,7 +253,7 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
   - `policy_version`: policy id, title, version, effective date, content hash.
   - `policy_chunk`: version, chunker and size, heading path, chunk index, content, token count, embedding model, `vector(768)` embedding, generated `tsvector`.
   - An HNSW index on the embedding.
-- [ ] A4.2 Ingestion job (`rag/ingest.py`, `uv run hr-ai ingest`). Built and tested against Postgres with fake embeddings; still to do: the endpoint, and a live run once `GEMINI_API_KEY` is set:
+- [ ] A4.2 Ingestion job (`rag/ingest.py`; `uv run hr-ai ingest` and `POST /agent/policies/ingest`, HR only). Built and tested against Postgres with fake embeddings; still to do: a live run once `GEMINI_API_KEY` is set:
   1. *(HR API)* Sign in with a least-privilege service login (Employee role, which only needs `policy:read`). Seeded as `ai-ingest@hr.local`; `Policy`/`PolicyVersion` are now Zod contracts.
   2. Fetch `GET /policies` and each file, and parse it: Markdown now, PDF via `pypdf`, DOCX via `python-docx`.
   3. Chunk by heading (or fixed-size, for comparison) and embed with Gemini.
@@ -263,8 +263,8 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
   - **Keyword search:** Postgres full-text search.
   - **Combine:** hybrid ranking with RRF, then an optional LLM rerank.
 - [ ] A4.4 `search_policy` tool returning chunks with citations (title, version, section). The answer prompt must cite its sources and admit when the policy is silent. (`tools/policy.py`, prompt `ask@3`; offered only when embeddings are configured. Live answers pending.)
-- [ ] A4.5 RAG eval: 25 questions with the expected source section (e.g. "Can unused leave carry over?" → Leave Policy v2 §1). Measure recall@5 and MRR for three chunk sizes, and for vector vs hybrid vs hybrid + rerank. Keep the results table in `docs/evaluation/`.
-- [ ] A4.6 Consistency test: RAG answers about entitlements and the late cutoff must match `LEAVE_POLICY` and `ATTENDANCE_RULES` in `@hr/contracts`. This catches the policy text drifting from the rules the code enforces.
+- [ ] A4.5 RAG eval: 25 questions with the expected source section (e.g. "Can unused leave carry over?" → Leave Policy v2 §1). Measure recall@5 and MRR for three chunk sizes, and for vector vs hybrid vs hybrid + rerank. Keep the results table in `docs/evaluation/`. (Dataset `evals/rag_questions.jsonl` and runner `uv run python -m evals.run_rag_eval` built; results pending `GEMINI_API_KEY`.)
+- [ ] A4.6 Consistency test: RAG answers about entitlements and the late cutoff must match `LEAVE_POLICY` and `ATTENDANCE_RULES` in `@hr/contracts`. This catches the policy text drifting from the rules the code enforces. (`tests/test_policy_consistency.py` against `packages/contracts/json-schema/rules.json`, checking retrieval and answers; live run pending `GEMINI_API_KEY`.)
 
 **Check yourself**
 - Why filter by effective date, and what goes wrong without it? Try "How much annual leave did we get in 2025?"

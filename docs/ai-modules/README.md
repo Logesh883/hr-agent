@@ -8,6 +8,7 @@ One file per finished module of the [learning and build plan](../AI_AGENT_TASKS.
 | M1 | [LLM fundamentals](M1-llm-fundamentals.md) | Provider-neutral LLM client, retries, streaming, logging, versioned prompts, `FakeLLM`, `hr-ai` CLI |
 | M2 (in progress) | [Structured outputs](M2-structured-outputs.md) | A2.1–A2.5 schema, retry, tool-based entity resolution and authenticated `/agent/parse`; A2.6 dataset and eval runner (provider scores pending) |
 | M3 | [Tool calling](M3-tool-calling.md) | Contracts shared with Python, tool framework, nine read-only HR tools, hand-written agent loop, RBAC through tools, masked OTLP tracing to Langfuse, `POST /agent/ask` |
+| M4 (in progress) | [RAG over HR policies](M4-rag.md) | `ai` schema with pgvector, ingestion as a least-privilege login, heading-aware chunking, hosted embeddings, vector + keyword + RRF + LLM rerank, effective-date scoping, `search_policy` with citations, retrieval eval and rules consistency test (live numbers pending an embeddings key) |
 
 ## How each note is laid out
 
