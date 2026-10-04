@@ -1,6 +1,6 @@
 # M4: RAG over HR policies
 
-**Status:** in progress. A4.1–A4.6 are built and tested: Postgres + pgvector with mocked HR API and fake embeddings, plus Groq for the reranker. The live numbers are still missing: A4.5 recall/MRR, A4.6 live checks and the "Check yourself" experiments all need `GEMINI_API_KEY` in the root `.env`. Plan: [AI_AGENT_TASKS.md § M4](../AI_AGENT_TASKS.md#m4-rag-over-hr-policies-5-days).
+**Status:** done. Live on Gemini `gemini-embedding-001` (768 dimensions): 7 policy versions → 24 chunks, and recall@5 = 1.00 on the 25-question eval for vector, hybrid and LLM-reranked retrieval (see A4.5). Plan: [AI_AGENT_TASKS.md § M4](../AI_AGENT_TASKS.md#m4-rag-over-hr-policies-5-days).
 
 ## In one paragraph
 

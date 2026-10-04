@@ -234,7 +234,7 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 
 ---
 
-## M4: RAG over HR policies (~5 days)
+## M4: RAG over HR policies (~5 days) ✅
 
 **Learn**
 - Why RAG: private and changing knowledge, with citations. Compare it with fine-tuning and with pasting everything into a long context.
@@ -253,18 +253,18 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
   - `policy_version`: policy id, title, version, effective date, content hash.
   - `policy_chunk`: version, chunker and size, heading path, chunk index, content, token count, embedding model, `vector(768)` embedding, generated `tsvector`.
   - An HNSW index on the embedding.
-- [ ] A4.2 Ingestion job (`rag/ingest.py`; `uv run hr-ai ingest` and `POST /agent/policies/ingest`, HR only). Built and tested against Postgres with fake embeddings; still to do: a live run once `GEMINI_API_KEY` is set:
+- [x] A4.2 Ingestion job (`rag/ingest.py`; `uv run hr-ai ingest` and `POST /agent/policies/ingest`, HR only). Live with Gemini: 7 versions → 24 chunks; a re-run embeds nothing:
   1. *(HR API)* Sign in with a least-privilege service login (Employee role, which only needs `policy:read`). Seeded as `ai-ingest@hr.local`; `Policy`/`PolicyVersion` are now Zod contracts.
   2. Fetch `GET /policies` and each file, and parse it: Markdown now, PDF via `pypdf`, DOCX via `python-docx`.
   3. Chunk by heading (or fixed-size, for comparison) and embed with Gemini.
   4. Upsert idempotently by content hash, so only changed versions are re-embedded.
-- [ ] A4.3 Retrieval (`rag/store.py`, `rag/retrieval.py`, `uv run hr-ai search`). Built and tested; live quality pending embeddings:
+- [x] A4.3 Retrieval (`rag/store.py`, `rag/retrieval.py`, `uv run hr-ai search`):
   - **Vector search:** top-k with metadata filters; the version in force by default, or `as_of=<date>` for "what was the rule then".
   - **Keyword search:** Postgres full-text search.
   - **Combine:** hybrid ranking with RRF, then an optional LLM rerank.
-- [ ] A4.4 `search_policy` tool returning chunks with citations (title, version, section). The answer prompt must cite its sources and admit when the policy is silent. (`tools/policy.py`, prompt `ask@3`; offered only when embeddings are configured. Live answers pending.)
-- [ ] A4.5 RAG eval: 25 questions with the expected source section (e.g. "Can unused leave carry over?" → Leave Policy v2 §1). Measure recall@5 and MRR for three chunk sizes, and for vector vs hybrid vs hybrid + rerank. Keep the results table in `docs/evaluation/`. (Dataset `evals/rag_questions.jsonl` and runner `uv run python -m evals.run_rag_eval` built; results pending `GEMINI_API_KEY`.)
-- [ ] A4.6 Consistency test: RAG answers about entitlements and the late cutoff must match `LEAVE_POLICY` and `ATTENDANCE_RULES` in `@hr/contracts`. This catches the policy text drifting from the rules the code enforces. (`tests/test_policy_consistency.py` against `packages/contracts/json-schema/rules.json`, checking retrieval and answers; live run pending `GEMINI_API_KEY`.)
+- [x] A4.4 `search_policy` tool returning chunks with citations (title, version, section). The answer prompt must cite its sources and admit when the policy is silent. (`tools/policy.py`, prompt `ask@3`; offered only when embeddings are configured.)
+- [x] A4.5 RAG eval: 25 questions with the expected source section (e.g. "Can unused leave carry over?" → Leave Policy v2 §1). Measure recall@5 and MRR for three chunk sizes, and for vector vs hybrid vs hybrid + rerank. Keep the results table in `docs/evaluation/`. (`evals/rag_questions.jsonl`, `uv run python -m evals.run_rag_eval` → [docs/evaluation/rag-retrieval.md](evaluation/rag-retrieval.md). Gemini embeddings: recall@5 = 1.00 for vector, hybrid and rerank.)
+- [x] A4.6 Consistency test: RAG answers about entitlements and the late cutoff must match `LEAVE_POLICY` and `ATTENDANCE_RULES` in `@hr/contracts`. This catches the policy text drifting from the rules the code enforces. (`tests/test_policy_consistency.py` against `packages/contracts/json-schema/rules.json`, checking retrieval and answers; live with `RAG_LIVE_TESTS=1`.)
 
 **Check yourself**
 - Why filter by effective date, and what goes wrong without it? Try "How much annual leave did we get in 2025?"

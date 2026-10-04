@@ -30,6 +30,19 @@ TOKEN_BUDGET = 60_000
 
 StopReason = Literal["answered", "max_steps", "token_budget"]
 
+EMPTY_ANSWER = "I couldn't produce an answer."
+BUDGET_ANSWER = (
+    "I stopped before finishing because this question needed too much work. "
+    "Try asking about one person or a shorter period."
+)
+
+
+def max_steps_answer(max_steps: int) -> str:
+    return (
+        f"I couldn't finish within {max_steps} steps. Try a narrower question, "
+        "for example about one person or one month."
+    )
+
 
 class ToolCallStep(BaseModel):
     id: str
@@ -107,7 +120,7 @@ async def run_agent(
         steps.append(step)
 
         if not response.tool_calls:
-            answer = (response.text or "").strip() or "I couldn't produce an answer."
+            answer = (response.text or "").strip() or EMPTY_ANSWER
             return _finish(trace, answer, "answered", steps, used)
 
         conversation.append(
@@ -116,7 +129,7 @@ async def run_agent(
         # Calls from one turn don't depend on each other (the model hasn't seen any of their
         # results yet), so they run in parallel. Results go back in the order they were asked.
         results = await asyncio.gather(
-            *(_run_tool(registry, ctx, call, trace) for call in response.tool_calls)
+            *(run_tool(registry, ctx, call, trace) for call in response.tool_calls)
         )
         for call, (result, latency_ms) in zip(response.tool_calls, results, strict=True):
             conversation.append(Message.tool(call.id, result_content(result)))
@@ -124,7 +137,7 @@ async def run_agent(
                 ToolCallStep(
                     id=call.id,
                     tool=call.name,
-                    arguments=_parsed(call.arguments),
+                    arguments=parsed_arguments(call.arguments),
                     ok=result.ok,
                     error=result.error,
                     data=result.data,
@@ -133,30 +146,16 @@ async def run_agent(
             )
 
         if used.total_tokens >= token_budget:
-            return _finish(
-                trace,
-                "I stopped before finishing because this question needed too much work. "
-                "Try asking about one person or a shorter period.",
-                "token_budget",
-                steps,
-                used,
-            )
+            return _finish(trace, BUDGET_ANSWER, "token_budget", steps, used)
 
-    return _finish(
-        trace,
-        f"I couldn't finish within {max_steps} steps. Try a narrower question, "
-        "for example about one person or one month.",
-        "max_steps",
-        steps,
-        used,
-    )
+    return _finish(trace, max_steps_answer(max_steps), "max_steps", steps, used)
 
 
-async def _run_tool(
+async def run_tool(
     registry: ToolRegistry, ctx: ToolContext, call: ToolCall, trace: Trace
 ) -> tuple[ToolResult, float]:
     with trace.observe(
-        f"tool {call.name}", input=_parsed(call.arguments), metadata={"call_id": call.id}
+        f"tool {call.name}", input=parsed_arguments(call.arguments), metadata={"call_id": call.id}
     ) as span:
         result = await registry.execute(call, ctx)
         span.output = result.model_dump(exclude_none=True)
@@ -175,7 +174,7 @@ def _finish(
     return AgentRun(answer=answer, stop_reason=reason, steps=steps, usage=used, trace_id=trace.id)
 
 
-def _parsed(arguments: str) -> Any:
+def parsed_arguments(arguments: str) -> Any:
     try:
         return json.loads(arguments or "{}")
     except json.JSONDecodeError:
