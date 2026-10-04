@@ -27,6 +27,7 @@ from pydantic import ValidationError
 
 from agent.ask import answer_question, new_ask_trace
 from agent.loop import AgentRun
+from app.agent_routes import run_budget
 from app.faults import configured_faults
 from app.hr_client import HrApiClient, HrApiError, HrApiUnavailableError
 from app.llm_routes import build_messages
@@ -428,6 +429,7 @@ async def _run(args: argparse.Namespace) -> int:
                 policies=policies,
                 outbox=PostgresOutbox(store.engine),
                 faults=configured_faults(args.faults or settings.hr_faults, settings.ai_env),
+                budget=run_budget(settings),
             )
             if args.resume:
                 record, task = await service.resume(caller, args.resume, None)

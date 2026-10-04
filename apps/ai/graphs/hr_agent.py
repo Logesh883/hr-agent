@@ -32,6 +32,7 @@ import asyncio
 import json
 import logging
 import random
+import time
 from collections.abc import Awaitable
 from dataclasses import dataclass, field, replace
 from typing import Annotated, Any, Literal, Protocol, Required, TypedDict, cast
@@ -46,10 +47,12 @@ from langgraph.types import interrupt
 from pydantic import ValidationError
 
 from agent.ask import ASK_REGISTRY, READ_REGISTRY, build_ask_messages
+from agent.budget import BudgetExceeded, RunBudget
 from agent.expectations import COMPENSATIONS, EXPECTATIONS
 from agent.provenance import is_id_field, question_for, unsupported_arguments
 from agent.risk import RiskPolicy, default_policy
 from agent.scope import allowed_writes, refusal
+from app.hr_client import HrApiError
 from graphs.plan import (
     Plan,
     UnresolvedReference,
@@ -66,11 +69,11 @@ from llm.base import LLMClient, LLMError
 from llm.types import Message, ToolCall
 from prompts import load_prompt
 from rag.retrieval import hit_payload
-from tools.base import Risk, Tool, ToolContext, ToolResult
+from tools.base import Risk, Tool, ToolContext, ToolError, ToolResult
 from tools.hr_read import READ_TOOLS
 from tools.hr_write import DEPARTMENT_TOOL, WRITE_TOOLS
 from tools.policy import POLICY_TOOLS
-from tools.registry import ToolRegistry, result_content, validation_summary
+from tools.registry import ToolRegistry, describe_hr_error, result_content, validation_summary
 from tracing.llm import TracedLLM
 from tracing.trace import Trace
 
@@ -158,7 +161,7 @@ class HrState(TypedDict, total=False):
     # Why execution stopped early, if it did: a rejected step, a failed write, or a write
     # whose result didn't check out (A7.2).
     stopped: str | None
-    stopped_kind: Literal["rejected", "failed", "mismatch"] | None
+    stopped_kind: Literal["rejected", "failed", "mismatch", "budget"] | None
     compensated: bool
     # A7.4: one line per step: done / verified / failed / skipped / rejected / not run / …
     summary: list[dict[str, Any]]
@@ -183,6 +186,21 @@ class HrContext:
     risk_policy: RiskPolicy = field(default_factory=default_policy)
     # A7.3: waits before retrying a transient failure (5xx, timeout, unreachable).
     retry_delays: tuple[float, ...] = (0.5, 1.0, 2.0)
+    # A8.4: tokens and time this start or resume may use, checked between nodes.
+    budget: RunBudget = field(default_factory=RunBudget)
+    started: float = field(default_factory=time.monotonic)
+
+    def check_budget(self) -> None:
+        used = self.trace.usage.total_tokens
+        if used >= self.budget.max_tokens:
+            raise BudgetExceeded(
+                f"This request used its token budget ({used:,} of {self.budget.max_tokens:,})"
+            )
+        elapsed = time.monotonic() - self.started
+        if elapsed > self.budget.max_seconds:
+            raise BudgetExceeded(
+                f"This request took longer than its time budget ({self.budget.max_seconds:g} s)"
+            )
 
     @property
     def registry(self) -> ToolRegistry:
@@ -211,6 +229,8 @@ def traced(name: str, node: Node) -> Node:
     """Wraps a node: a `node_started` event for the timeline, and a span in the trace."""
 
     async def run(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
+        # A8.4: between nodes, never in the middle of one (a write is never cut in half).
+        runtime.context.check_budget()
         get_stream_writer()({"event": "node_started", "node": name})
         span = None
         try:
@@ -378,14 +398,22 @@ async def plan(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
             "It was rejected. Fix these problems and return the complete plan again:\n- "
             + "\n- ".join(state.get("plan_problems", []))
         )
-    response = await ctx.traced_llm("llm plan").chat(
-        [Message.system(system), Message.user("\n\n".join(parts))],
-        response_format={"type": "json_object"},
-        temperature=0,
-        max_tokens=1500,
-        prompt=prompt.ref,
-    )
     attempts = state.get("plan_attempts", 0) + 1
+    try:
+        response = await ctx.traced_llm("llm plan").chat(
+            [Message.system(system), Message.user("\n\n".join(parts))],
+            response_format={"type": "json_object"},
+            temperature=0,
+            max_tokens=1500,
+            prompt=prompt.ref,
+        )
+    except LLMError as error:
+        # e.g. the provider's JSON mode failing: one failed attempt, not a crashed run.
+        return {
+            "plan": None,
+            "plan_problems": [f"The model couldn't produce a plan: {error}"],
+            "plan_attempts": attempts,
+        }
     usage = response.usage.model_dump()
     try:
         proposed = Plan.model_validate_json(response.text or "")
@@ -749,11 +777,31 @@ async def approve(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]
         failed = {"status": "failed", "ok": False, "error": validation_summary(error)}
         return {"results": {step["id"]: {"tool": step["tool"], "arguments": prepared} | failed}}
     # Read-only: safe to repeat when the node re-runs on resume.
-    preview = (
-        await tool.preview(ctx.tools, validated)
-        if tool.preview
-        else {"summary": f"Run {tool.name}", "before": None, "after": prepared}
-    )
+    try:
+        preview = (
+            await tool.preview(ctx.tools, validated)
+            if tool.preview
+            else {"summary": f"Run {tool.name}", "before": None, "after": prepared}
+        )
+    except (ToolError, HrApiError) as error:
+        # The write can't happen (your own leave, no access): stop here instead of asking a
+        # person to approve it.
+        message = describe_hr_error(error) if isinstance(error, HrApiError) else str(error)
+        return {
+            "results": {
+                step["id"]: {
+                    "tool": step["tool"],
+                    "arguments": prepared,
+                    "status": "failed",
+                    "ok": False,
+                    "error": message,
+                    "error_kind": "forbidden",
+                }
+            },
+            "stopped": f"{step['id']} ({step['tool']}) can't be done: {message}",
+            "stopped_kind": "failed",
+            "choices": choices,
+        }
     level = state.get("risks", {}).get(step["id"], "high")
     steps: list[dict[str, Any]] = (state.get("plan") or {}).get("steps", [])
     request = {
@@ -1022,9 +1070,12 @@ async def respond(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]
     }
 
 
-def plain_summary(state: HrState) -> str:
+FALLBACK_INTRO = "The assistant couldn't write a full answer, so here is what happened:"
+
+
+def plain_summary(state: HrState, intro: str = FALLBACK_INTRO) -> str:
     """The answer without an LLM: each step's outcome, from code."""
-    lines = ["The assistant couldn't write a full answer, so here is what happened:"]
+    lines = [intro]
     for line in state.get("summary") or completion_summary(state):
         detail = f" ({line['detail']})" if line.get("detail") else ""
         lines.append(f"- {line['step']} {line['tool'].replace('_', ' ')}: {line['status']}{detail}")

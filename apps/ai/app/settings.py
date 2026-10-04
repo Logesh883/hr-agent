@@ -42,6 +42,13 @@ class Settings(BaseSettings):
     # "POST /leave-requests=500,drop". See app/faults.py. Ignored in production.
     hr_faults: str = ""
 
+    # A8.4 budgets. Per start or resume of an agent run: tokens and seconds (checked between
+    # steps; a hard stop at twice the seconds). Per user: requests a minute and runs at once.
+    agent_run_max_tokens: int = 60_000
+    agent_run_max_seconds: float = 120.0
+    agent_requests_per_minute: int = 10
+    agent_concurrent_runs: int = 2
+
     # Which hosted model answers. Every provider speaks the OpenAI chat completions API;
     # "groq", "openrouter" and "gemini" fill in LLM_BASE_URL, "custom" needs it set.
     llm_provider: Literal["groq", "openrouter", "gemini", "custom"] = "groq"

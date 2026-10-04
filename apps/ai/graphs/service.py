@@ -22,6 +22,7 @@ from typing import Any
 
 import httpx
 
+from agent.budget import RateLimiter, RunBudget
 from app.faults import FaultInjector, FaultRule
 from app.hr_client import HrApiClient, SessionUser
 from graphs.hr_agent import HrContext
@@ -65,6 +66,8 @@ class RunService:
         outbox: Outbox | None = None,
         today: Callable[[], date] = date.today,
         faults: list[FaultRule] | None = None,
+        budget: RunBudget | None = None,
+        limiter: RateLimiter | None = None,
     ) -> None:
         self.graph = graph
         self.store = store
@@ -76,9 +79,13 @@ class RunService:
         self.outbox = outbox
         self.today = today
         self.faults = faults
+        self.budget = budget or RunBudget()
+        # A8.4: per-user runs a minute and runs at once. None: unlimited (tests).
+        self.limiter = limiter
         self._tasks: dict[str, asyncio.Task[None]] = {}
 
     async def start(self, caller: Caller, request: str) -> tuple[RunRecord, asyncio.Task[None]]:
+        await self._acquire(caller)
         run = RunRecord.new(user_id=caller.user.id, user_role=caller.user.role, request=request)
         await self.store.create(run)
         await self.store.add_event(run.id, {"event": "run_started", "request": request})
@@ -100,6 +107,7 @@ class RunService:
             raise RunConflict("This run isn't waiting for an answer; resume it without one.")
         if run.status not in ("waiting", "interrupted"):
             raise RunConflict(f"A {run.status} run can't be resumed.")
+        await self._acquire(caller)
         await self.store.update(run.id, status="running", question=None)
         await self.store.add_event(run.id, {"event": "run_resumed", "answer": answer})
 
@@ -129,11 +137,21 @@ class RunService:
             task.cancel()
         await asyncio.gather(*self._tasks.values(), return_exceptions=True)
 
+    async def _acquire(self, caller: Caller) -> None:
+        if self.limiter is not None:
+            await self.limiter.acquire(caller.user.id)  # raises RateLimited
+
     def _launch(self, run: RunRecord, caller: Caller, action: Action) -> asyncio.Task[None]:
         task = asyncio.create_task(self._execute(run, caller, action))
         # Keep a reference: the event loop only holds weak ones, and a collected task dies.
         self._tasks[run.id] = task
-        task.add_done_callback(lambda _: self._tasks.pop(run.id, None))
+
+        def done(_: asyncio.Task[None]) -> None:
+            self._tasks.pop(run.id, None)
+            if self.limiter is not None:
+                self.limiter.release(caller.user.id)
+
+        task.add_done_callback(done)
         return task
 
     async def _execute(self, run: RunRecord, caller: Caller, action: Action) -> None:
@@ -170,13 +188,28 @@ class RunService:
                 policies=self.policies,
                 outbox=self.outbox,
             )
-            context = HrContext(llm=self.llm, tools=tools, trace=trace)
+            context = HrContext(llm=self.llm, tools=tools, trace=trace, budget=self.budget)
             try:
-                outcome = await action(context, on_event)
+                # The graph stops itself between nodes when over its time budget; this is
+                # the last resort for a node that hangs mid-call.
+                async with asyncio.timeout(self.budget.max_seconds * 2):
+                    outcome = await action(context, on_event)
             except asyncio.CancelledError:
                 # Shutdown: the checkpoint keeps what's done; startup marks it interrupted.
                 trace.finish({"error": "cancelled"})
                 raise
+            except TimeoutError:
+                logger.warning("run.timeout", extra={"fields": {"run_id": run.id}})
+                trace.finish({"error": "timeout"})
+                await self.store.update(
+                    run.id,
+                    status="failed",
+                    error="TimeoutError: the run took too long and was stopped",
+                    completed_at=datetime.now(UTC),
+                )
+                await on_event(
+                    {"event": "failed", "error": "The run took too long and was stopped."}
+                )
             except Exception as error:
                 logger.exception("run.failed", extra={"fields": {"run_id": run.id}})
                 trace.finish({"error": repr(error)})

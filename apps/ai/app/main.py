@@ -6,6 +6,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
+from agent.budget import RateLimiter
 from app import agent_routes, llm_routes, run_routes
 from app.log import configure_logging
 from app.settings import Settings, get_settings
@@ -49,6 +50,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.trace_exporter = create_exporter(settings)
     app.state.run_service = None
     app.state.run_service_lock = asyncio.Lock()
+    # A8.4: one limiter for agent runs and questions, per user.
+    app.state.rate_limiter = RateLimiter(
+        per_minute=settings.agent_requests_per_minute,
+        concurrent=settings.agent_concurrent_runs,
+    )
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.web_origin],

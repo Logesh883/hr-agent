@@ -25,7 +25,14 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
-from app.agent_routes import bearer_token, get_policy_retriever, signed_in_user
+from agent.budget import RateLimited
+from app.agent_routes import (
+    bearer_token,
+    get_policy_retriever,
+    run_budget,
+    signed_in_user,
+    too_many,
+)
 from app.faults import configured_faults
 from app.hr_client import HrApiClient
 from app.llm_routes import get_llm
@@ -128,6 +135,8 @@ async def get_run_service(request: Request) -> RunService:
                 policies=get_policy_retriever(request, llm),
                 outbox=PostgresOutbox(store.engine),
                 faults=configured_faults(settings.hr_faults, settings.ai_env),
+                budget=run_budget(settings),
+                limiter=state.rate_limiter,
             )
             state.run_service_stack = stack
     return state.run_service
@@ -154,7 +163,10 @@ async def start(
     authorization: Annotated[str | None, Header()] = None,
 ) -> RunView:
     caller = await _caller(request, authorization)
-    run, _ = await service.start(caller, body.request)
+    try:
+        run, _ = await service.start(caller, body.request)
+    except RateLimited as error:
+        raise too_many(error) from error
     return RunView.of(run)
 
 
@@ -189,6 +201,8 @@ async def resume(
         run, _ = await service.resume(caller, run_id, answer)
     except RunConflict as error:
         raise HTTPException(409, str(error)) from error
+    except RateLimited as error:
+        raise too_many(error) from error
     return RunView.of(run.model_copy(update={"status": "running", "question": None}))
 
 

@@ -23,7 +23,17 @@ from graphs.runner import HrGraph, start_run
 from llm.fake import FakeLLM
 from llm.types import ToolCall
 from rag.retrieval import PolicyRetriever, hit_payload
-from tests.hr_data import ARUN, BASE_URL, LEAVE_ID, SNEHA, SNEHA_ID, page, session_user
+from tests.hr_data import (
+    ARUN,
+    BASE_URL,
+    LEAVE_ID,
+    RAHUL_ID,
+    RAHUL_REF,
+    SNEHA,
+    SNEHA_ID,
+    page,
+    session_user,
+)
 from tests.test_hr_graph import Events, parse, plan_json
 from tests.test_rag_retrieval import StubStore, hit, retriever
 from tools.base import ToolContext
@@ -233,6 +243,41 @@ async def test_a_poisoned_policy_cant_make_a_question_change_anything(
         REMOVED in respond_prompt and "warning: Instruction-like text was removed" in respond_prompt
     )
     assert '<data source="policy: Leave Policy v2 §3 Carry-over">' in respond_prompt
+
+
+async def test_nobody_is_asked_to_approve_their_own_leave(
+    http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter
+) -> None:
+    from tests.test_failures import leave
+
+    own = leave(employee=RAHUL_REF)
+    hr_api.get("/leave-requests").respond(json=page(own))
+    hr_api.get(f"/leave-requests/{LEAVE_ID}").respond(json=own)
+    approves_own = json.loads(
+        plan_json(
+            ("s1", "list_leave_requests", {"view": "mine", "status": "PENDING"}),
+            ("s2", "approve_leave", {"leave_request_id": "$s1.requests.0.id"}),
+            goal="Approve my own leave",
+        )
+    )
+    approves_own["steps"][1]["risk"] = "write"
+    llm = FakeLLM(
+        [parse("approve_leave", people=["Rahul"]), json.dumps(approves_own), "You can't."]
+    )
+
+    outcome = await start_run(
+        graph,
+        "own",
+        "Approve my pending leave",
+        context(http, llm, user("MANAGER", RAHUL_ID)),
+        Events(),
+    )
+
+    assert outcome.status == "completed"  # never paused for an approval
+    s2 = outcome.values["results"]["s2"]
+    assert s2["status"] == "failed"
+    assert s2["error"] == "You can't approve or reject your own leave request."
+    assert not hr_api["approve"].called
 
 
 # ---- A8.2: quarantine and fencing --------------------------------------------------------

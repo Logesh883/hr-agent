@@ -1,5 +1,6 @@
 """The authenticated natural-language entry point for the HR agent."""
 
+import math
 from datetime import date
 from typing import Annotated, cast, get_args
 
@@ -8,6 +9,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, 
 from pydantic import BaseModel, Field
 
 from agent.ask import answer_question, new_ask_trace
+from agent.budget import RateLimited, RateLimiter, RunBudget
 from agent.loop import AgentStep, StopReason
 from app.hr_client import HrApiClient, HrApiError, HrApiUnavailableError, SessionUser
 from app.llm_routes import get_llm
@@ -114,6 +116,19 @@ class AskResponse(BaseModel):
     trace_id: str
 
 
+def run_budget(settings: Settings) -> RunBudget:
+    return RunBudget(
+        max_tokens=settings.agent_run_max_tokens, max_seconds=settings.agent_run_max_seconds
+    )
+
+
+def too_many(error: RateLimited) -> HTTPException:
+    """429 with Retry-After (A8.4)."""
+    return HTTPException(
+        429, str(error), headers={"Retry-After": str(max(1, math.ceil(error.retry_after)))}
+    )
+
+
 @router.post("/ask", response_model=AskResponse)
 async def ask(
     body: AskRequest,
@@ -136,6 +151,12 @@ async def ask(
             today=date.today(),
             policies=get_policy_retriever(request, llm),
         )
+        limiter: RateLimiter | None = getattr(request.app.state, "rate_limiter", None)
+        if limiter is not None:
+            try:
+                await limiter.acquire(ctx.user.id)
+            except RateLimited as error:
+                raise too_many(error) from error
         trace = new_ask_trace(body.question, ctx)
         try:
             run = await answer_question(llm, ctx, body.question, trace=trace)
@@ -144,6 +165,9 @@ async def ask(
             trace.finish({"error": str(error)})
             await exporter.export(trace)
             raise HTTPException(502, "The language model could not process this request") from error
+        finally:
+            if limiter is not None:
+                limiter.release(ctx.user.id)
 
     # After the response is sent, so tracing never adds latency.
     background.add_task(exporter.export, trace)

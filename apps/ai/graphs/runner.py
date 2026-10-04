@@ -20,10 +20,12 @@ from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 from langchain_core.runnables import RunnableConfig
+from langgraph.errors import GraphRecursionError
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Command
 
-from graphs.hr_agent import HrContext, HrState
+from agent.budget import BudgetExceeded
+from graphs.hr_agent import HrContext, HrState, plain_summary
 
 EventSink = Callable[[dict[str, Any]], Awaitable[None]]
 
@@ -74,17 +76,27 @@ async def _drive(
     on_event: EventSink,
 ) -> RunOutcome:
     config = thread_config(thread_id)
-    async for mode, chunk in graph.astream(
-        payload, config, context=context, stream_mode=["updates", "custom"]
-    ):
-        if mode == "custom":
-            await on_event(cast(dict[str, Any], chunk))
-            continue
-        for node, update in cast(dict[str, Any], chunk).items():
-            if node != "__interrupt__":
-                await on_event(
-                    {"event": "node_finished", "node": node, "summary": summarize(node, update)}
-                )
+    # A8.4: LangGraph's own step limit, so no routing bug can loop forever.
+    config["recursion_limit"] = context.budget.max_node_passes
+    try:
+        async for mode, chunk in graph.astream(
+            payload, config, context=context, stream_mode=["updates", "custom"]
+        ):
+            if mode == "custom":
+                await on_event(cast(dict[str, Any], chunk))
+                continue
+            for node, update in cast(dict[str, Any], chunk).items():
+                if node != "__interrupt__":
+                    await on_event(
+                        {"event": "node_finished", "node": node, "summary": summarize(node, update)}
+                    )
+    except (BudgetExceeded, GraphRecursionError) as error:
+        reason = (
+            str(error)
+            if isinstance(error, BudgetExceeded)
+            else f"This request needed more than {context.budget.max_node_passes} steps"
+        )
+        return await _stop_over_budget(graph, config, reason, on_event)
     snapshot = await graph.aget_state(config)
     values = dict(snapshot.values)
     if snapshot.interrupts:
@@ -94,6 +106,23 @@ async def _drive(
     await on_event(
         {"event": "finished", "status": values.get("status"), "answer": values.get("answer")}
     )
+    return RunOutcome("completed", values)
+
+
+async def _stop_over_budget(
+    graph: HrGraph, config: RunnableConfig, reason: str, on_event: EventSink
+) -> RunOutcome:
+    """Ends the run where it stands. The checkpoint keeps the last finished node; the run
+    is recorded as failed, so it can't be resumed into more of the same."""
+    snapshot = await graph.aget_state(config)
+    values = dict(snapshot.values)
+    values["answer"] = plain_summary(
+        cast(HrState, values), intro=f"{reason}, so I stopped here. What happened so far:"
+    )
+    values["status"] = "failed"
+    values["stopped_kind"] = "budget"
+    await on_event({"event": "budget_exceeded", "reason": reason})
+    await on_event({"event": "finished", "status": "failed", "answer": values["answer"]})
     return RunOutcome("completed", values)
 
 

@@ -342,8 +342,16 @@ def _leave_view(leave: api.LeaveRequest) -> dict[str, Any]:
     }
 
 
+def _not_own(ctx: ToolContext, leave: api.LeaveRequest) -> None:
+    """Nobody decides their own leave (the HR API refuses too). Checked before the approval
+    is even shown, so nobody is asked to approve something that can't happen."""
+    if ctx.user.employee_id and str(leave.employee.id) == ctx.user.employee_id:
+        raise ToolError("You can't approve or reject your own leave request.")
+
+
 async def _preview_decision(ctx: ToolContext, leave_id: UUID, status: str) -> dict[str, Any]:
     leave = await _leave(ctx, leave_id)
+    _not_own(ctx, leave)
     view = _leave_view(leave)
     return {
         "summary": f"{status.title()} {view['employee']}'s {view['type'].lower()} leave "
@@ -354,6 +362,7 @@ async def _preview_decision(ctx: ToolContext, leave_id: UUID, status: str) -> di
 
 
 async def approve_leave(ctx: ToolContext, args: DecideLeaveInput) -> dict[str, Any]:
+    _not_own(ctx, await _leave(ctx, args.leave_request_id))
     body = _body(api.ApproveLeave, comment=args.comment)
     data = await ctx.hr.post(
         f"/leave-requests/{args.leave_request_id}/approve",
@@ -368,6 +377,7 @@ async def preview_approve_leave(ctx: ToolContext, args: DecideLeaveInput) -> dic
 
 
 async def reject_leave(ctx: ToolContext, args: RejectLeaveInput) -> dict[str, Any]:
+    _not_own(ctx, await _leave(ctx, args.leave_request_id))
     body = _body(api.RejectLeave, reason=args.reason)
     data = await ctx.hr.post(
         f"/leave-requests/{args.leave_request_id}/reject", body, idempotency_key=ctx.idempotency_key

@@ -265,9 +265,11 @@ async def test_an_interrupted_run_resumes_from_its_checkpoint(
     run_id = (
         await client.post("/agent/runs", json={"request": "Sneha vs Arun"}, headers=AUTH)
     ).json()["id"]
-    # Polls the store: the test only sees the run from outside, like an API client.
-    while not any(e.get("node") == "respond" for _, e in await store.events(run_id)):  # noqa: ASYNC110
-        await asyncio.sleep(0.01)
+    # Polls the store: the test only sees the run from outside, like an API client. Bounded,
+    # so a run that never gets there fails the test instead of hanging the suite.
+    async with asyncio.timeout(5):
+        while not any(e.get("node") == "respond" for _, e in await store.events(run_id)):  # noqa: ASYNC110
+            await asyncio.sleep(0.01)
     await service.aclose()  # shutdown cancels the run mid-respond
     # Every tool call made before the kill is already on record.
     assert len(store.tool_calls) == 4
