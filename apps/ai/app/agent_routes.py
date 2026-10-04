@@ -57,13 +57,13 @@ async def parse_agent_request(
     authorization: Annotated[str | None, Header()] = None,
 ) -> ParseResponse:
     """Parse a request and resolve mentioned records as the authenticated HR API user."""
-    token = _bearer_token(authorization)
+    token = bearer_token(authorization)
     settings: Settings = request.app.state.settings
     async with httpx.AsyncClient(
         base_url=settings.hr_api_url, timeout=settings.hr_api_timeout
     ) as http:
         hr = HrApiClient(http, token)
-        user = await _signed_in_user(hr)
+        user = await signed_in_user(hr)
         role = cast(Role, user.role)
         today = date.today()
         try:
@@ -123,7 +123,7 @@ async def ask(
     authorization: Annotated[str | None, Header()] = None,
 ) -> AskResponse:
     """Answer a read-only HR question with tools, as the authenticated HR API user."""
-    token = _bearer_token(authorization)
+    token = bearer_token(authorization)
     settings: Settings = request.app.state.settings
     exporter: TraceExporter = request.app.state.trace_exporter
     async with httpx.AsyncClient(
@@ -132,7 +132,7 @@ async def ask(
         hr = HrApiClient(http, token)
         ctx = ToolContext(
             hr=hr,
-            user=await _signed_in_user(hr),
+            user=await signed_in_user(hr),
             today=date.today(),
             policies=get_policy_retriever(request, llm),
         )
@@ -190,7 +190,7 @@ async def ingest_policy_documents(
     async with httpx.AsyncClient(
         base_url=settings.hr_api_url, timeout=settings.hr_api_timeout
     ) as http:
-        user = await _signed_in_user(HrApiClient(http, _bearer_token(authorization)))
+        user = await signed_in_user(HrApiClient(http, bearer_token(authorization)))
         if "policy:manage" not in user.permissions:
             raise HTTPException(403, "Only HR can re-index policies")
         if settings.ai_service_password is None:
@@ -232,7 +232,7 @@ def get_policy_retriever(request: Request, llm: LLMClient) -> PolicyRetriever | 
     return state.policies
 
 
-async def _signed_in_user(hr: HrApiClient) -> SessionUser:
+async def signed_in_user(hr: HrApiClient) -> SessionUser:
     """Who the token belongs to; only the four agent roles may use the agent."""
     try:
         user = await hr.me()
@@ -245,7 +245,7 @@ async def _signed_in_user(hr: HrApiClient) -> SessionUser:
     return user
 
 
-def _bearer_token(authorization: str | None) -> str:
+def bearer_token(authorization: str | None) -> str:
     if not authorization:
         raise HTTPException(401, "Authorization bearer token is required")
     scheme, separator, token = authorization.partition(" ")

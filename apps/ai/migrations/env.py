@@ -11,6 +11,7 @@ from alembic import context
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
+import graphs.records  # noqa: F401  # pyright: ignore[reportUnusedImport] (registers run tables)
 from app.settings import get_settings
 from rag.db import SCHEMA, create_engine, metadata
 
@@ -26,6 +27,10 @@ def include_name(name: str | None, type_: str, parent_names: object) -> bool:
     # Autogenerate compares only our schema; Prisma's tables in `public` are not ours.
     if type_ == "schema":
         return name == SCHEMA
+    # LangGraph's checkpointer creates and migrates its own tables in `ai` (checkpoints,
+    # checkpoint_blobs, checkpoint_writes, checkpoint_migrations): not Alembic's to manage.
+    if type_ == "table":
+        return name is not None and not name.startswith("checkpoint")
     return True
 
 

@@ -8,15 +8,18 @@ uv run hr-ai parse "Approve Sneha's leave" --login manager@hr.local   # + tool-b
 uv run hr-ai ask "How many annual leave days does Sneha have left?" --login hr@hr.local
 uv run hr-ai ingest                    # policies → chunks + embeddings (ai schema)
 uv run hr-ai search "Can unused leave carry over?" --mode vector   # retrieval only, no LLM
+uv run hr-ai run "Compare Sneha's and Arun's leave" --login hr@hr.local   # the HR agent graph
+uv run hr-ai run --resume RUN_ID --login hr@hr.local   # continue a stopped or waiting run
 """
 
 import argparse
 import asyncio
 import getpass
+import json
 import os
 import sys
 from datetime import date
-from typing import cast, get_args
+from typing import Any, cast, get_args
 
 import httpx
 from pydantic import ValidationError
@@ -27,6 +30,9 @@ from app.hr_client import HrApiClient, HrApiError, HrApiUnavailableError
 from app.llm_routes import build_messages
 from app.log import configure_logging
 from app.settings import get_settings
+from graphs.hr_agent import build_hr_graph
+from graphs.persistence import PostgresRunStore, open_checkpointer
+from graphs.service import Caller, RunConflict, RunService
 from intent.entity_resolution import resolve_entities_with_tools
 from intent.parser import parse_request
 from intent.prompt import Role
@@ -101,8 +107,18 @@ def main(argv: list[str] | None = None) -> None:
     search.add_argument("--size", type=int, help="chunk size to search; default RAG_CHUNK_TOKENS")
     search.add_argument("-k", type=int, default=5)
 
+    run = commands.add_parser("run", help="run the HR agent graph (persistent, resumable)")
+    run.add_argument("request", nargs="?", help="what to do; omit with --resume")
+    run.add_argument("--resume", metavar="RUN_ID", help="continue this run")
+    run.add_argument("--login", metavar="EMAIL", required=True)
+    run.add_argument("--model", help="override LLM_MODEL")
+
     args = parser.parse_args(argv)
-    if args.command == "ingest":
+    if args.command == "run":
+        if bool(args.request) == bool(args.resume):
+            parser.error("give either a request or --resume RUN_ID")
+        sys.exit(asyncio.run(_run(args)))
+    elif args.command == "ingest":
         sys.exit(asyncio.run(_ingest(args.chunker, args.size)))
     elif args.command == "search":
         sys.exit(asyncio.run(_search(args)))
@@ -365,6 +381,101 @@ async def _search(args: argparse.Namespace) -> int:
         print(f"{rank}. [{hit.score:.4f}] {hit.citation}{flag}")
         print("   " + hit.content.replace("\n", "\n   "))
     return 0
+
+
+async def _run(args: argparse.Namespace) -> int:
+    """Starts (or resumes) a run, prints its timeline, and asks any question in the terminal."""
+    settings = get_settings()
+    if args.model:
+        settings = settings.model_copy(update={"llm_model": args.model})
+    configure_logging("WARNING")
+    try:
+        llm = create_llm_client(settings)
+    except LLMConfigError as error:
+        print(error, file=sys.stderr)
+        return 2
+    policies = create_policy_retriever(settings, llm=llm)
+    exporter = create_exporter(settings)
+    store = PostgresRunStore(create_engine(settings.ai_db_url))
+    try:
+        async with (
+            httpx.AsyncClient(
+                base_url=settings.hr_api_url, timeout=settings.hr_api_timeout
+            ) as http,
+            open_checkpointer(settings.ai_db_url) as checkpointer,
+        ):
+            password = os.environ.get("HR_PASSWORD") or getpass.getpass(
+                f"Password for {args.login}: "
+            )
+            login = await HrApiClient(http).login(args.login, password)
+            caller = Caller(token=login.access_token, user=login.user)
+            await store.mark_interrupted()
+            service = RunService(
+                graph=build_hr_graph(checkpointer),
+                store=store,
+                llm=llm,
+                exporter=exporter,
+                hr_api_url=settings.hr_api_url,
+                hr_api_timeout=settings.hr_api_timeout,
+                policies=policies,
+            )
+            if args.resume:
+                record, task = await service.resume(caller, args.resume, None)
+            else:
+                record, task = await service.start(caller, args.request)
+            print(f"run {record.id}", file=sys.stderr)
+            seen = 0
+            while True:
+                seen = await _follow(store, record.id, task, seen)
+                current = await store.get(record.id)
+                if current is None or current.status != "waiting" or not current.question:
+                    break
+                prompt_text = f"? {current.question['question']}\n  "
+                # Off the event loop: nothing else needs it while we wait for the user.
+                answer = (await asyncio.to_thread(input, prompt_text)).strip()
+                record, task = await service.resume(caller, record.id, answer)
+            final = await store.get(record.id)
+            if final and final.answer:
+                print(f"\n{final.answer}")
+            return 0 if final and final.status == "completed" else 1
+    except (LLMError, HrApiError, HrApiUnavailableError, RunConflict, LookupError) as error:
+        print(f"error: {error!r}", file=sys.stderr)
+        return 1
+    finally:
+        await store.aclose()
+        await llm.aclose()
+        await exporter.aclose()
+        await close_policy_retriever(policies)
+
+
+async def _follow(
+    store: PostgresRunStore, run_id: str, task: "asyncio.Task[None]", seen: int
+) -> int:
+    """Prints new timeline events until the run's task ends."""
+    while True:
+        done = task.done()
+        for event_id, event in await store.events(run_id, after=seen):
+            seen = event_id
+            print(_event_line(event), file=sys.stderr)
+        if done:
+            return seen
+        await asyncio.sleep(0.2)
+
+
+def _event_line(event: dict[str, Any]) -> str:
+    kind = event["event"]
+    if kind == "node_started":
+        return f"▸ {event['node']}"
+    if kind == "node_finished":
+        summary: dict[str, Any] = event.get("summary") or {}
+        return f"  ✓ {event['node']}" + (f"  {json.dumps(summary)[:160]}" if summary else "")
+    if kind in ("tool_started", "tool_finished"):
+        mark = "→" if kind == "tool_started" else ("ok" if event.get("ok") else "failed")
+        return f"    {mark} {event['tool']} ({event.get('step', '')})"
+    if kind == "waiting":
+        options = event.get("options")
+        return "  ⏸ waiting for you" + (f": {options}" if options else "")
+    return f"  {kind}"
 
 
 def _print_steps(run: AgentRun) -> None:

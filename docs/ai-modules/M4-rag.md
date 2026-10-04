@@ -100,7 +100,22 @@ The tool is only **offered** when embeddings are configured. Offering a tool tha
 
 Why 64/128/256 and not bigger: every section in the seeded policies is under ~125 tokens, and heading chunks never span sections, so 256, 512 and 1024 produce identical chunks. A dry run with the fake embedder showed exactly that.
 
-**Results:** pending `GEMINI_API_KEY`.
+**Results** (2026-10-04, Gemini `gemini-embedding-001`; full table in [rag-retrieval.md](../evaluation/rag-retrieval.md)):
+
+| Chunks | Vector | Keyword | Hybrid (RRF) | LLM rerank* |
+| --- | --- | --- | --- | --- |
+| heading 64 | 1.00 / 0.980 | 0.96 / 0.683 | 1.00 / 0.913 | 1.00 / **1.000** |
+| heading 128 | 1.00 / 0.960 | 1.00 / 0.828 | 1.00 / 0.913 | 1.00 / **1.000** |
+| heading 256 | 1.00 / 0.960 | 1.00 / 0.828 | 1.00 / 0.913 | not run |
+| fixed 256 | 1.00 / 0.880 | 1.00 / 0.890 | 1.00 / 0.920 | not run |
+
+Recall@5 / MRR. *Rerank with Groq `qwen/qwen3.8-27b`, from the first run; it stopped when the run used up Groq's free 200k tokens per day (25 questions × ~3k tokens per rerank call per configuration). The generated table has the three LLM-free modes.
+
+What the numbers say:
+- **Recall is solved on this corpus**: every mode except keyword at 64 tokens finds the right passage in the top 5. With 7 short policies, ranking (MRR) is where the modes differ.
+- **Hybrid was *worse* than vector alone on heading chunks** (0.913 vs 0.96–0.98). Keyword search ranks a different chunk first for several questions, and RRF gives both lists equal weight, so a confident, correct vector rank 1 gets diluted. Hybrid only helped on fixed chunks, where vector search is weaker. "Hybrid is always better" is folklore; measure it.
+- **The LLM reranker fixed the ranking** (MRR 1.000): reading the question and passage together beats both. It costs one call of about 3k tokens per question, and that budget is exactly what ran out mid-eval. The default stays hybrid without rerank; `RAG_RERANK=true` is worth it for a paid tier.
+- **Structure beats fixed windows for vector search** (0.96–0.98 vs 0.88): the fixed chunker cuts sections apart, so the best chunk often lacks the heading that says what it's about.
 
 ## A4.6: consistency
 

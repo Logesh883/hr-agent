@@ -277,7 +277,7 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 
 ---
 
-## M5: LangGraph: stateful agent workflows (~5 days)
+## M5: LangGraph: stateful agent workflows (~5 days) ✅
 
 **Learn**
 - Workflows vs agents, and the common patterns: prompt chaining, routing, parallelisation, orchestrator–workers, evaluator–optimizer.
@@ -288,8 +288,8 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 - Memory: short-term (thread state) vs long-term (stored facts).
 
 **Build**
-- [ ] A5.1 Re-implement the M3 loop as a LangGraph graph and compare the two traces. Note what the framework now does for you.
-- [ ] A5.2 The HR agent graph (README §3):
+- [x] A5.1 Re-implement the M3 loop as a LangGraph graph and compare the two traces. Note what the framework now does for you. (`graphs/react.py`; identical runs on six scripts in `test_react_graph.py`.)
+- [x] A5.2 The HR agent graph (README §3) (`graphs/hr_agent.py`, `graphs/plan.py`):
   1. understand (intent + resolution)
   2. retrieve policy (when needed)
   3. **plan** (a structured list of steps: tool, arguments, reason, risk)
@@ -299,10 +299,10 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
   7. respond
 
   Add a short path for simple questions.
-- [ ] A5.3 Clarification: when information is missing, interrupt and ask ("Which department is Priya joining?"), then resume the same thread with the answer.
-- [ ] A5.4 Postgres checkpointer in the `ai` schema: one thread per conversation, and runs survive a server restart.
-- [ ] A5.5 `POST /agent/runs`, `GET /agent/runs/:id`, and a server-sent events stream `/agent/runs/:id/events` (node and tool events, which later become the Command Center timeline).
-- [ ] A5.6 Persist `WorkflowRun`, `AgentRun` and `ToolCall` records (spec data model) in the `ai` schema.
+- [x] A5.3 Clarification: when information is missing, interrupt and ask ("Which department is Priya joining?"), then resume the same thread with the answer.
+- [x] A5.4 Postgres checkpointer in the `ai` schema: one thread per conversation, and runs survive a server restart. (`graphs/persistence.py`; verified with `kill -9` and resume.)
+- [x] A5.5 `POST /agent/runs`, `GET /agent/runs/:id`, and a server-sent events stream `/agent/runs/:id/events` (node and tool events, which later become the Command Center timeline). Plus `POST /agent/runs/:id/resume` and `hr-ai run`.
+- [x] A5.6 Persist `WorkflowRun`, `AgentRun` and `ToolCall` records (spec data model) in the `ai` schema.
 
 **Check yourself**
 - What's the difference between graph state and the message history?

@@ -20,7 +20,7 @@ from typing import Any, Protocol
 import httpx
 
 from app.settings import Settings
-from tracing.masking import Masker, collect_names
+from tracing.masking import Masker
 from tracing.trace import Observation, Trace
 
 logger = logging.getLogger("hr_ai.tracing")
@@ -93,10 +93,7 @@ class LangfuseExporter:
 
 def otlp_request(trace: Trace) -> dict[str, Any]:
     """The OTLP/JSON export request for one trace, masked."""
-    names = set(trace.known_names)
-    for observation in trace.observations:
-        names |= collect_names(observation.output)
-    masker = Masker(names)
+    masker = trace.masker()
 
     # Langfuse builds the trace from its spans, so trace-level fields go on every span.
     trace_attributes: dict[str, Any] = {

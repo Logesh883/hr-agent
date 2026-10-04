@@ -54,13 +54,14 @@ from graphs.plan import (
 from graphs.react import REACT_GRAPH, AgentContext, add_usage, append
 from intent.parser import parse_request
 from intent.prompt import Role
-from intent.schema import Intent, ParsedRequest
+from intent.schema import MIN_CONFIDENCE, Intent, ParsedRequest
 from llm.base import LLMClient
 from llm.types import Message, ToolCall
 from prompts import load_prompt
 from rag.retrieval import hit_payload
 from tools.base import ToolContext, ToolResult
 from tools.registry import ToolRegistry, result_content
+from tracing.llm import TracedLLM
 from tracing.trace import Trace
 
 Route = Literal["clarify", "decline", "simple", "plan"]
@@ -143,6 +144,10 @@ class HrContext:
     def registry(self) -> ToolRegistry:
         return ASK_REGISTRY if self.tools.policies else READ_REGISTRY
 
+    def traced_llm(self, name: str) -> LLMClient:
+        """The LLM, recording each call as a generation named after the node."""
+        return TracedLLM(self.llm, self.trace, name)
+
 
 class Node(Protocol):
     def __call__(
@@ -182,7 +187,7 @@ def request_with_clarifications(state: HrState) -> str:
 async def understand(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
     ctx = runtime.context
     parsed = await parse_request(
-        ctx.llm,
+        ctx.traced_llm("llm understand"),
         request_with_clarifications(state),
         today=ctx.tools.today,
         role=cast(Role, ctx.tools.user.role),
@@ -195,13 +200,29 @@ def choose_route(state: HrState, parsed: ParsedRequest, ctx: HrContext) -> Route
     asked = len(state.get("clarifications", []))
     if parsed.intent is Intent.UNKNOWN and parsed.clarifying_question is None:
         return "decline"  # clearly not an HR request: asking again won't help
-    if parsed.needs_clarification and asked < ctx.max_clarifications:
+    if asked < ctx.max_clarifications and should_ask(parsed):
         return "clarify"
     if parsed.intent is Intent.UNKNOWN:
         return "decline"
     if parsed.intent in WRITE_INTENTS or len(parsed.entities.people) > 1:
         return "plan"
     return "simple"
+
+
+def should_ask(parsed: ParsedRequest) -> bool:
+    """Ask only when acting without an answer would be wrong or wasteful.
+
+    Required information missing, an unclear intent, or low confidence: always ask. The
+    model's own optional question only counts for requests that change data. A read-only
+    request with nothing missing just runs: reading costs nothing and the user can follow
+    up, while every question costs them a round trip (the model tends to ask "would you
+    also like…?" about things the request already says).
+    """
+    if parsed.missing_fields or parsed.intent is Intent.UNKNOWN:
+        return True
+    if parsed.confidence < MIN_CONFIDENCE:
+        return True
+    return parsed.clarifying_question is not None and parsed.intent in WRITE_INTENTS
 
 
 def route_after_understand(state: HrState) -> str:
@@ -295,7 +316,7 @@ async def plan(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
             "It was rejected. Fix these problems and return the complete plan again:\n- "
             + "\n- ".join(state.get("plan_problems", []))
         )
-    response = await ctx.llm.chat(
+    response = await ctx.traced_llm("llm plan").chat(
         [Message.system(system), Message.user("\n\n".join(parts))],
         response_format={"type": "json_object"},
         temperature=0,
@@ -368,9 +389,12 @@ async def execute_step(state: HrState, runtime: Runtime[HrContext]) -> dict[str,
         arguments = resolve_references(step["arguments"], results, choices)
     except UnresolvedReference as error:
         if not error.candidates or error.reference is None:
+            # Usually an earlier search found nobody: there's nothing to look up, which is
+            # a finding to report, not a failure of this step.
             return {
                 "results": {
-                    step["id"]: record | {"status": "failed", "ok": False, "error": str(error)}
+                    step["id"]: record
+                    | {"status": "skipped", "ok": False, "error": f"skipped: {error}"}
                 }
             }
         index = ask_which(error)
@@ -455,19 +479,25 @@ def route_after_step(state: HrState) -> str:
 
 
 async def verify(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
-    """Read-only plans: every step ran and found something. (Writes get real checks in M7.)"""
+    """Read-only plans: did every step run? (Writes get real checks in M7.)
+
+    A step that failed is a problem. A search that found nobody is a *finding*: for a new
+    hire it's the expected answer (no duplicate record), so it's reported, not flagged.
+    """
     problems: list[str] = []
+    findings: list[str] = []
     for step in (state.get("plan") or {}).get("steps", []):
         result = state.get("results", {}).get(step["id"])
+        where = f"{step['id']} ({step['tool']})"
         if result is None:
-            problems.append(f"{step['id']} ({step['tool']}) never ran.")
+            problems.append(f"{where} never ran.")
+        elif result.get("status") == "skipped":
+            findings.append(f"{where} {result.get('error')}")
         elif not result.get("ok"):
-            problems.append(
-                f"{step['id']} ({step['tool']}) {result.get('status')}: {result.get('error')}"
-            )
+            problems.append(f"{where} failed: {result.get('error')}")
         elif _empty(result.get("data")):
-            problems.append(f"{step['id']} ({step['tool']}) found nothing.")
-    return {"verification": {"ok": not problems, "problems": problems}}
+            findings.append(f"{where} found nothing.")
+    return {"verification": {"ok": not problems, "problems": problems, "findings": findings}}
 
 
 def _empty(data: Any) -> bool:
@@ -498,10 +528,12 @@ async def respond(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]
             parts.append(f"{step['id']} {step['tool']} ({step['reason']}): {content}")
     for passage in state.get("policy", []):
         parts.append(f"Policy passage [{passage['citation']}]: {passage['text']}")
-    problems = state.get("verification", {}).get("problems", [])
-    if problems:
-        parts.append("Checks that didn't pass: " + "; ".join(problems))
-    response = await ctx.llm.chat(
+    verification = state.get("verification", {})
+    if verification.get("problems"):
+        parts.append("Steps that failed: " + "; ".join(verification["problems"]))
+    if verification.get("findings"):
+        parts.append("Empty results (findings, not errors): " + "; ".join(verification["findings"]))
+    response = await ctx.traced_llm("llm respond").chat(
         [Message.system(system), Message.user("\n\n".join(parts))],
         temperature=0,
         max_tokens=1024,

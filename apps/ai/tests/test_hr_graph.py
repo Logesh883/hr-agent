@@ -136,7 +136,7 @@ async def test_a_multi_step_request_is_planned_checked_run_and_answered(
     assert [r["status"] for r in results.values()] == ["done"] * 4
     # References were resolved by code to the ids the searches returned.
     assert results["s4"]["arguments"] == {"employee_id": ARUN_ID}
-    assert outcome.values["verification"] == {"ok": True, "problems": []}
+    assert outcome.values["verification"] == {"ok": True, "problems": [], "findings": []}
     # Tool events stream between the node events.
     assert events.kinds().count("tool_started") == 4
     assert events.items[-1] == {
@@ -146,7 +146,7 @@ async def test_a_multi_step_request_is_planned_checked_run_and_answered(
     }
     # The respond step saw every result and was told nothing failed.
     respond_prompt = llm.calls[-1].messages[1].content or ""
-    assert "s4 get_leave_balances" in respond_prompt and "didn't pass" not in respond_prompt
+    assert "s4 get_leave_balances" in respond_prompt and "Steps that failed" not in respond_prompt
 
 
 @respx.mock
@@ -320,3 +320,51 @@ async def test_a_crashed_run_continues_from_its_last_checkpoint(
     assert outcome.answer == "Sneha 9, Arun 4."
     assert events.nodes() == ["respond"]
     assert respx.calls.call_count == lookups  # nothing looked up twice
+
+
+@respx.mock
+async def test_an_empty_search_is_a_finding_and_dependent_steps_are_skipped(
+    http: httpx.AsyncClient, graph: HrGraph
+) -> None:
+    respx.get(f"{BASE_URL}/employees", params={"q": "Priya"}).respond(json=page())
+    llm = FakeLLM(
+        [
+            parse("leave_balance", people=["Priya", "Sneha"]),
+            plan_json(
+                ("s1", "search_employee", {"query": "Priya"}),
+                ("s2", "get_leave_balances", {"employee_id": "$s1.employees.0.id"}),
+            ),
+            "Nobody called Priya has a record.",
+        ]
+    )
+
+    outcome = await start_run(graph, "t9", "Priya's leave", context(http, llm), Events())
+
+    results = outcome.values["results"]
+    assert results["s2"]["status"] == "skipped"
+    assert outcome.values["verification"] == {
+        "ok": True,
+        "problems": [],
+        "findings": [
+            "s1 (search_employee) found nothing.",
+            "s2 (get_leave_balances) skipped: $s1.employees.0.id: step s1 found nothing.",
+        ],
+    }
+    assert "Empty results (findings, not errors)" in (llm.calls[-1].messages[1].content or "")
+
+
+@pytest.mark.parametrize(
+    ("parsed", "asks"),
+    [
+        (parse("attendance_review", question="Also the policy?"), False),
+        (parse("approve_leave", people=["Sneha"], question="Which request?"), True),
+        (parse("onboard_employee", people=["Priya"], job_title="Engineer"), True),
+        (parse("leave_balance", confidence=0.4), True),
+        (parse("leave_balance"), False),
+    ],
+)
+def test_only_needed_questions_are_asked(parsed: str, asks: bool) -> None:
+    from graphs.hr_agent import should_ask
+    from intent.schema import ModelParse, ParsedRequest
+
+    assert should_ask(ParsedRequest.from_model(ModelParse.model_validate_json(parsed))) is asks

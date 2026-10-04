@@ -13,6 +13,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from llm.types import Usage
+from tracing.masking import Masker, collect_names
 
 
 def _now() -> datetime:
@@ -97,6 +98,14 @@ class Trace(BaseModel):
             raise
         finally:
             observation.end_time = _now()
+
+    def masker(self) -> "Masker":
+        """Masks this trace's data for export: credentials, contact details, and the names
+        of everyone it mentions (the user, and people in tool results)."""
+        names = set(self.known_names)
+        for observation in self.observations:
+            names |= collect_names(observation.output)
+        return Masker(names)
 
     def finish(self, output: Any) -> None:
         self.output = output
