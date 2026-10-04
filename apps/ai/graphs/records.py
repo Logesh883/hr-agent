@@ -110,3 +110,43 @@ workflow_event = Table(
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Index("workflow_event_run_idx", "workflow_run_id", "id"),
 )
+
+approval = Table(
+    "approval",
+    metadata,
+    # A6.4: every decision on a write that needed approval, with what was shown.
+    Column("id", UUID(as_uuid=False), primary_key=True),
+    Column(
+        "workflow_run_id",
+        UUID(as_uuid=False),
+        ForeignKey(f"{SCHEMA}.workflow_run.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column("step_id", Text, nullable=False),
+    Column("tool", Text, nullable=False),
+    Column("risk", Text, nullable=False),
+    # approved | edited | rejected
+    Column("decision", Text, nullable=False),
+    # The arguments that were approved (after any edit): exactly what ran.
+    Column("arguments", JSONB, nullable=False),
+    # The summary and before → after diff the person saw.
+    Column("preview", JSONB),
+    Column("comment", Text),
+    Column("decided_by", Text, nullable=False),
+    Column("decided_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Index("approval_workflow_idx", "workflow_run_id"),
+)
+
+email_outbox = Table(
+    "email_outbox",
+    metadata,
+    # send_email's stub: messages are queued here and never sent.
+    Column("id", UUID(as_uuid=False), primary_key=True),
+    Column("to_address", Text, nullable=False),
+    Column("subject", Text, nullable=False),
+    Column("body", Text, nullable=False),
+    # The step's idempotency key: a retried step doesn't queue a second copy.
+    Column("idempotency_key", Text, unique=True),
+    Column("status", Text, nullable=False, server_default="queued"),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)

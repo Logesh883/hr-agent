@@ -241,7 +241,7 @@ async def test_an_invalid_plan_goes_back_to_the_planner_with_the_problems(
     llm = FakeLLM(
         [
             parse("leave_balance", people=["Sneha", "Arun"]),
-            plan_json(("s1", "approve_leave", {"leave_id": "x"})),
+            plan_json(("s1", "delete_employee", {"leave_id": "x"})),
             COMPARE_PLAN,
             "Sneha 9, Arun 4.",
         ]
@@ -252,13 +252,13 @@ async def test_an_invalid_plan_goes_back_to_the_planner_with_the_problems(
     assert outcome.status == "completed"
     assert outcome.values["plan_attempts"] == 2
     retry_prompt = llm.calls[2].messages[1].content or ""
-    assert "s1 (approve_leave): no such tool" in retry_prompt
+    assert "s1 (delete_employee): no such tool" in retry_prompt
 
 
 async def test_a_plan_that_never_passes_is_reported_not_run(
     http: httpx.AsyncClient, graph: HrGraph
 ) -> None:
-    bad = plan_json(("s1", "approve_leave", {}))
+    bad = plan_json(("s1", "delete_employee", {}))
     llm = FakeLLM(
         [parse("leave_balance", people=["Sneha", "Arun"]), bad, bad, "I couldn't plan that."]
     )

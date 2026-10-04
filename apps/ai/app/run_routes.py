@@ -18,7 +18,7 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
@@ -30,7 +30,13 @@ from app.hr_client import HrApiClient
 from app.llm_routes import get_llm
 from app.settings import Settings
 from graphs.hr_agent import build_hr_graph
-from graphs.persistence import PostgresRunStore, RunRecord, open_checkpointer, summarize_state
+from graphs.persistence import (
+    PostgresOutbox,
+    PostgresRunStore,
+    RunRecord,
+    open_checkpointer,
+    summarize_state,
+)
 from graphs.service import Caller, RunConflict, RunService
 from rag.db import create_engine
 from tracing.langfuse import TraceExporter
@@ -45,9 +51,19 @@ class StartRun(BaseModel):
     request: str = Field(min_length=1, max_length=4000)
 
 
+class ApprovalDecision(BaseModel):
+    """The answer to an approval question (A6.4)."""
+
+    decision: Literal["approve", "reject", "edit"]
+    # For "edit": the arguments to change, e.g. {"job_title": "Senior Software Engineer"}.
+    arguments: dict[str, Any] | None = None
+    comment: str | None = Field(default=None, max_length=500)
+
+
 class ResumeRun(BaseModel):
-    # The answer to the run's question; omit to continue an interrupted run.
-    answer: str | None = Field(default=None, max_length=2000)
+    # The answer to the run's question (text, or a decision for an approval); omit to
+    # continue an interrupted run.
+    answer: str | ApprovalDecision | None = Field(default=None)
 
 
 class RunView(BaseModel):
@@ -109,6 +125,7 @@ async def get_run_service(request: Request) -> RunService:
                 hr_api_url=settings.hr_api_url,
                 hr_api_timeout=settings.hr_api_timeout,
                 policies=get_policy_retriever(request, llm),
+                outbox=PostgresOutbox(store.engine),
             )
             state.run_service_stack = stack
     return state.run_service
@@ -162,7 +179,12 @@ async def resume(
     caller = await _caller(request, authorization)
     await _owned(service, caller, run_id)
     try:
-        run, _ = await service.resume(caller, run_id, body.answer)
+        answer = (
+            body.answer.model_dump(exclude_none=True)
+            if isinstance(body.answer, ApprovalDecision)
+            else body.answer
+        )
+        run, _ = await service.resume(caller, run_id, answer)
     except RunConflict as error:
         raise HTTPException(409, str(error)) from error
     return RunView.of(run.model_copy(update={"status": "running", "question": None}))

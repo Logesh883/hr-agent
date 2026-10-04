@@ -10,6 +10,7 @@ One file per finished module of the [learning and build plan](../AI_AGENT_TASKS.
 | M3 | [Tool calling](M3-tool-calling.md) | Contracts shared with Python, tool framework, nine read-only HR tools, hand-written agent loop, RBAC through tools, masked OTLP tracing to Langfuse, `POST /agent/ask` |
 | M4 | [RAG over HR policies](M4-rag.md) | `ai` schema with pgvector, ingestion as a least-privilege login, heading-aware chunking, hosted embeddings, vector + keyword + RRF + LLM rerank, effective-date scoping, `search_policy` with citations, retrieval eval (recall@5 = 1.00) and rules consistency test |
 | M5 | [LangGraph workflows](M5-langgraph.md) | The M3 loop as a graph (proved identical), the HR agent graph (understand → route → plan → validate → execute step by step → verify → respond), clarification and "which one?" interrupts, Postgres checkpoints that survive restarts, runs API with SSE timeline, run/LLM/tool records |
+| M6 | [Writes and approval](M6-writes-approval.md) | HR API: AI audit entries with run id, Idempotency-Key; eleven write tools with previews; risk policy file; approval node (approve / reject / edit, stored); "never invent data" provenance checks that ask instead; Onboard Priya live on hr_test |
 
 ## How each note is laid out
 

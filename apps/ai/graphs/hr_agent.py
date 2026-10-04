@@ -30,11 +30,11 @@ trace are the run's context: never checkpointed, supplied again on every resume.
 
 import json
 from collections.abc import Awaitable
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from typing import Annotated, Any, Literal, Protocol, Required, TypedDict, cast
 
 from langgraph.checkpoint.base import BaseCheckpointSaver
-from langgraph.config import get_stream_writer
+from langgraph.config import get_config, get_stream_writer
 from langgraph.errors import GraphInterrupt
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -43,6 +43,8 @@ from langgraph.types import interrupt
 from pydantic import ValidationError
 
 from agent.ask import ASK_REGISTRY, READ_REGISTRY, build_ask_messages
+from agent.provenance import is_id_field, question_for, unsupported_arguments
+from agent.risk import RiskPolicy, default_policy
 from graphs.plan import (
     Plan,
     UnresolvedReference,
@@ -59,8 +61,11 @@ from llm.base import LLMClient
 from llm.types import Message, ToolCall
 from prompts import load_prompt
 from rag.retrieval import hit_payload
-from tools.base import ToolContext, ToolResult
-from tools.registry import ToolRegistry, result_content
+from tools.base import Risk, Tool, ToolContext, ToolResult
+from tools.hr_read import READ_TOOLS
+from tools.hr_write import DEPARTMENT_TOOL, WRITE_TOOLS
+from tools.policy import POLICY_TOOLS
+from tools.registry import ToolRegistry, result_content, validation_summary
 from tracing.llm import TracedLLM
 from tracing.trace import Trace
 
@@ -103,6 +108,14 @@ DECLINE_ANSWER = (
 )
 
 
+# What a plan may use: the read tools, departments, policy search (when configured) and,
+# from M6, the write tools. The short path stays read-only (ASK_REGISTRY / READ_REGISTRY).
+PLAN_REGISTRY = ToolRegistry([*READ_TOOLS, DEPARTMENT_TOOL, *WRITE_TOOLS])
+PLAN_REGISTRY_WITH_POLICY = ToolRegistry(
+    [*READ_TOOLS, DEPARTMENT_TOOL, *POLICY_TOOLS, *WRITE_TOOLS]
+)
+
+
 def merge[V](old: dict[str, V], new: dict[str, V]) -> dict[str, V]:
     return old | new
 
@@ -123,6 +136,18 @@ class HrState(TypedDict, total=False):
     results: Annotated[dict[str, dict[str, Any]], merge]
     # Answers to "which one?" questions: reference text → chosen list position.
     choices: Annotated[dict[str, int], merge]
+    # A6.5: values the plan needed but nobody gave: [{"step", "argument", "question"}], and
+    # the user's answers, step id → {argument: value}. Applied on top of the plan by code.
+    missing: list[dict[str, str]]
+    overrides: Annotated[dict[str, dict[str, Any]], merge]
+    value_error: str | None
+    # A6.3: each write step's risk level, from the policy (never from the model).
+    risks: dict[str, str]
+    # A6.4: step id → {"decision", "arguments", "hash", "risk", "by", "comment", "preview"}.
+    approvals: Annotated[dict[str, dict[str, Any]], merge]
+    approval_error: str | None
+    # Why execution stopped early (a rejected step), if it did.
+    stopped: str | None
     verification: dict[str, Any]
     # The short path's steps (AgentStep dumps) and token usage.
     steps: list[dict[str, Any]]
@@ -139,9 +164,18 @@ class HrContext:
     tools: ToolContext
     trace: Trace
     max_clarifications: int = MAX_CLARIFICATIONS
+    # M5 ran plans read-only; M6 lets plans write, behind the risk policy and approval.
+    allow_writes: bool = True
+    risk_policy: RiskPolicy = field(default_factory=default_policy)
 
     @property
     def registry(self) -> ToolRegistry:
+        """Tools a plan may use."""
+        return PLAN_REGISTRY_WITH_POLICY if self.tools.policies else PLAN_REGISTRY
+
+    @property
+    def read_registry(self) -> ToolRegistry:
+        """Tools the short path may use: reads only."""
         return ASK_REGISTRY if self.tools.policies else READ_REGISTRY
 
     def traced_llm(self, name: str) -> LLMClient:
@@ -261,7 +295,11 @@ async def answer_simple(state: HrState, runtime: Runtime[HrContext]) -> dict[str
     result = await REACT_GRAPH.ainvoke(
         {"messages": [m.model_dump(mode="json") for m in messages]},
         context=AgentContext(
-            llm=ctx.llm, registry=ctx.registry, tools=ctx.tools, trace=ctx.trace, prompt=prompt
+            llm=ctx.llm,
+            registry=ctx.read_registry,
+            tools=ctx.tools,
+            trace=ctx.trace,
+            prompt=prompt,
         ),
     )
     return {
@@ -343,27 +381,170 @@ async def plan(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
 
 
 async def validate_plan(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
+    ctx = runtime.context
     proposed = state.get("plan")
     if proposed is None:
         return {}  # plan already reported why
-    problems = check_plan(Plan.model_validate(proposed), runtime.context.registry)
+    checked = Plan.model_validate(proposed)
+    problems = check_plan(checked, ctx.registry, allow_writes=ctx.allow_writes)
     if problems:
         return {"plan_problems": problems}
-    return {"plan_problems": [], "plan_hash": plan_hash(proposed), "results": {}}
+    missing: list[dict[str, str]] = []
+    id_problems: list[str] = []
+    risks: dict[str, str] = {}
+    for step in checked.steps:
+        tool = ctx.registry.get(step.tool)
+        if tool is None or tool.risk is not Risk.WRITE:
+            continue
+        risks[step.id] = ctx.risk_policy.assess(tool, step.arguments) or "low"
+        # A6.5: every literal a write would send must come from the user, the parse, a
+        # lookup or a documented default; otherwise ask.
+        for argument in unsupported_arguments(
+            step.arguments,
+            tool.input_model,
+            user_text=request_with_clarifications(state),
+            parsed=state.get("parsed", {}),
+            own_employee_id=ctx.tools.user.employee_id,
+        ):
+            if is_id_field(tool.input_model, argument):
+                id_problems.append(
+                    f"{step.id} ({step.tool}): '{argument}' is an id; get it from a lookup "
+                    "step and reference it (e.g. list_departments with the department's name, "
+                    "or with the manager's department via '$sN.employees.0.department'). "
+                    "Never ask the user for an id."
+                )
+                continue
+            missing.append(
+                {
+                    "step": step.id,
+                    "argument": argument,
+                    "question": question_for(argument, step.arguments, step.tool),
+                }
+            )
+    if id_problems:
+        return {"plan_problems": id_problems}
+    return {
+        "plan_problems": [],
+        "plan_hash": plan_hash(proposed),
+        "results": {},
+        "missing": missing,
+        "risks": risks,
+    }
 
 
-def route_after_validate(state: HrState) -> str:
-    if not state.get("plan_problems"):
-        return "execute_step"
-    if state.get("plan_attempts", 0) < MAX_PLAN_ATTEMPTS:
-        return "plan"
-    return "respond"
+def still_missing(state: HrState) -> list[dict[str, str]]:
+    overrides = state.get("overrides", {})
+    return [
+        m for m in state.get("missing", []) if m["argument"] not in overrides.get(m["step"], {})
+    ]
+
+
+def route_after_validate(state: HrState, runtime: Runtime[HrContext]) -> str:
+    if state.get("plan_problems"):
+        return "plan" if state.get("plan_attempts", 0) < MAX_PLAN_ATTEMPTS else "respond"
+    return route_next(state, runtime)
+
+
+def route_next(state: HrState, runtime: Runtime[HrContext]) -> str:
+    """What happens next, decided by code: ask for a missing value, ask for approval, run
+    the next step, or (all done, or stopped by a rejection) verify."""
+    if still_missing(state):
+        return "ask_value"
+    if state.get("stopped"):
+        return "verify"
+    step = next_step(state)
+    if step is None:
+        return "verify"
+    if needs_approval(state, step, runtime.context) and step["id"] not in state.get(
+        "approvals", {}
+    ):
+        return "approve"
+    return "execute_step"
+
+
+def needs_approval(state: HrState, step: dict[str, Any], ctx: HrContext) -> bool:
+    level = state.get("risks", {}).get(step["id"])
+    return ctx.risk_policy.needs_approval(level)  # pyright: ignore[reportArgumentType]
+
+
+async def ask_value(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
+    """A6.5: asks the user for one value the plan needs but nobody gave."""
+    item = still_missing(state)[0]
+    step = _plan_step(state, item["step"])
+    tool = runtime.context.registry.get(step["tool"])
+    assert tool is not None
+    # Worded now, with earlier answers applied: "Priya Rao's email", not "Priya's".
+    question = question_for(item["argument"], _step_arguments(state, step), step["tool"])
+    answer = interrupt(
+        {
+            "type": "value",
+            "question": question,
+            "step": item["step"],
+            "argument": item["argument"],
+            "error": state.get("value_error"),
+        }
+    )
+    value = str(answer).strip()
+    try:
+        _check_field(tool, item["argument"], value)
+    except ValidationError as error:
+        return {"value_error": f"That didn't work: {validation_summary(error)}. Try again."}
+    current = dict(state.get("overrides", {}).get(item["step"], {}))
+    current[item["argument"]] = value
+    return {"overrides": {item["step"]: current}, "value_error": None}
+
+
+def _check_field(tool: Tool[Any], name: str, value: Any) -> None:
+    model = tool.input_model
+    model.__pydantic_validator__.validate_assignment(model.model_construct(), name, value)
+
+
+def _plan_step(state: HrState, step_id: str) -> dict[str, Any]:
+    steps: list[dict[str, Any]] = (state.get("plan") or {}).get("steps", [])
+    return next(s for s in steps if s["id"] == step_id)
 
 
 def next_step(state: HrState) -> dict[str, Any] | None:
     done = state.get("results", {})
     steps = (state.get("plan") or {}).get("steps", [])
     return next((step for step in steps if step["id"] not in done), None)
+
+
+def _step_arguments(state: HrState, step: dict[str, Any]) -> dict[str, Any]:
+    """The plan's arguments with the user's answers (A6.5) applied on top."""
+    return {**step["arguments"], **state.get("overrides", {}).get(step["id"], {})}
+
+
+def prepare_arguments(
+    state: HrState, step: dict[str, Any]
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None, dict[str, int]]:
+    """(arguments, None, choices) when the step can run, or (None, result record, choices)
+    when it can't: an earlier step it needs didn't succeed, or a reference found nothing.
+    May interrupt to ask "which one?"."""
+    results = state.get("results", {})
+    record: dict[str, Any] = {"tool": step["tool"], "arguments": step["arguments"]}
+    failed_inputs = [ref for ref in references(step) if not results.get(ref, {}).get("ok")]
+    if failed_inputs:
+        reason = f"skipped: needs {', '.join(sorted(failed_inputs))}, which didn't succeed"
+        return None, record | {"status": "skipped", "ok": False, "error": reason}, {}
+    choices = dict(state.get("choices", {}))
+    arguments = _step_arguments(state, step)
+    try:
+        return resolve_references(arguments, results, choices), None, choices
+    except UnresolvedReference as error:
+        if not error.candidates or error.reference is None:
+            # Usually an earlier search found nobody: a finding, not a failure.
+            return (
+                None,
+                record | {"status": "skipped", "ok": False, "error": f"skipped: {error}"},
+                choices,
+            )
+        index = ask_which(error)
+        if index is None:
+            message = f"{error} The answer didn't match exactly one of them."
+            return None, record | {"status": "failed", "ok": False, "error": message}, choices
+        choices[error.reference] = index
+        return resolve_references(arguments, results, choices), None, choices
 
 
 async def execute_step(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
@@ -374,39 +555,30 @@ async def execute_step(state: HrState, runtime: Runtime[HrContext]) -> dict[str,
     step = next_step(state)
     if step is None:
         return {}
-    results = state.get("results", {})
-    record: dict[str, Any] = {"tool": step["tool"], "arguments": step["arguments"]}
+    approval = state.get("approvals", {}).get(step["id"])
+    if approval is not None:
+        # Exactly what the person approved (or edited), nothing re-resolved.
+        arguments: dict[str, Any] = approval["arguments"]
+        if plan_hash(arguments) != approval["hash"]:
+            raise RuntimeError(f"{step['id']}: arguments differ from what was approved.")
+        choices = dict(state.get("choices", {}))
+    else:
+        if needs_approval(state, step, ctx):
+            # The router never gets here; this is the second lock on the same door.
+            raise RuntimeError(f"{step['id']} needs approval and has none; refusing to run it.")
+        prepared, skipped, choices = prepare_arguments(state, step)
+        if prepared is None:
+            return {"results": {step["id"]: skipped}, "choices": choices}
+        arguments = prepared
 
-    failed_inputs = [ref for ref in references(step) if not results.get(ref, {}).get("ok")]
-    if failed_inputs:
-        reason = f"skipped: needs {', '.join(sorted(failed_inputs))}, which didn't succeed"
-        return {
-            "results": {step["id"]: record | {"status": "skipped", "ok": False, "error": reason}}
-        }
-
-    choices = dict(state.get("choices", {}))
-    try:
-        arguments = resolve_references(step["arguments"], results, choices)
-    except UnresolvedReference as error:
-        if not error.candidates or error.reference is None:
-            # Usually an earlier search found nobody: there's nothing to look up, which is
-            # a finding to report, not a failure of this step.
-            return {
-                "results": {
-                    step["id"]: record
-                    | {"status": "skipped", "ok": False, "error": f"skipped: {error}"}
-                }
-            }
-        index = ask_which(error)
-        if index is None:
-            message = f"{error} The answer didn't match exactly one of them."
-            return {
-                "results": {
-                    step["id"]: record | {"status": "failed", "ok": False, "error": message}
-                }
-            }
-        choices[error.reference] = index
-        arguments = resolve_references(step["arguments"], results, choices)
+    tool_ctx = ctx.tools
+    tool = ctx.registry.get(step["tool"])
+    if tool is not None and tool.risk is Risk.WRITE:
+        # Stable for this step of this plan in this run: a retry or a resume after a
+        # crash replays the HR API's first answer instead of writing twice.
+        thread = str(get_config().get("configurable", {}).get("thread_id", "run"))
+        key = f"{thread}:{state.get('plan_hash', '')[:12]}:{step['id']}"
+        tool_ctx = replace(ctx.tools, idempotency_key=key)
 
     write = get_stream_writer()
     write({"event": "tool_started", "tool": step["tool"], "step": step["id"]})
@@ -414,13 +586,14 @@ async def execute_step(state: HrState, runtime: Runtime[HrContext]) -> dict[str,
     with ctx.trace.observe(
         f"tool {step['tool']}", input=arguments, metadata={"step": step["id"]}
     ) as span:
-        result = await ctx.registry.execute(call, ctx.tools)
+        result = await ctx.registry.execute(call, tool_ctx)
         span.output = result.model_dump(exclude_none=True)
         if not result.ok:
             span.level = "WARNING"
             span.status_message = result.error
     write({"event": "tool_finished", "tool": step["tool"], "step": step["id"], "ok": result.ok})
-    record |= {
+    record = {
+        "tool": step["tool"],
         "arguments": arguments,
         "status": "done" if result.ok else "failed",
         "ok": result.ok,
@@ -428,6 +601,123 @@ async def execute_step(state: HrState, runtime: Runtime[HrContext]) -> dict[str,
         "error": result.error,
     }
     return {"results": {step["id"]: record}, "choices": choices}
+
+
+async def approve(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
+    """A6.4: shows the next write (what changes, before → after, why, the policy evidence)
+    and waits for the person's decision: approve, reject, or edit the arguments.
+
+    The decision only ever comes from the user, through resume: the model has no way to
+    produce one, and execute_step refuses an unapproved write even if routing were wrong.
+    """
+    ctx = runtime.context
+    step = next_step(state)
+    assert step is not None
+    tool = ctx.registry.get(step["tool"])
+    assert tool is not None
+    prepared, skipped, choices = prepare_arguments(state, step)
+    if prepared is None:
+        return {"results": {step["id"]: skipped}, "choices": choices}
+    try:
+        validated = tool.input_model.model_validate(prepared)
+    except ValidationError as error:
+        failed = {"status": "failed", "ok": False, "error": validation_summary(error)}
+        return {"results": {step["id"]: {"tool": step["tool"], "arguments": prepared} | failed}}
+    # Read-only: safe to repeat when the node re-runs on resume.
+    preview = (
+        await tool.preview(ctx.tools, validated)
+        if tool.preview
+        else {"summary": f"Run {tool.name}", "before": None, "after": prepared}
+    )
+    level = state.get("risks", {}).get(step["id"], "high")
+    steps: list[dict[str, Any]] = (state.get("plan") or {}).get("steps", [])
+    request = {
+        "type": "approval",
+        "question": f"Approve: {preview.get('summary', tool.name)}?",
+        "step": step["id"],
+        "tool": step["tool"],
+        "risk": level,
+        "reason": step.get("reason"),
+        "summary": preview.get("summary"),
+        "before": preview.get("before"),
+        "after": preview.get("after"),
+        "problems": preview.get("problems", []),
+        "arguments": prepared,
+        "plan": [{"id": s["id"], "tool": s["tool"], "reason": s.get("reason")} for s in steps],
+        "policy": [p["citation"] for p in state.get("policy", [])],
+        "error": state.get("approval_error"),
+    }
+    decision = _decision(interrupt(request))
+    if decision["decision"] == "reject":
+        record = _approval_record(step, decision, prepared, level, ctx, preview)
+        get_stream_writer()({"event": "approval_decided", "step": step["id"], **record})
+        reason = f"rejected by {ctx.tools.user.name}" + (
+            f": {decision['comment']}" if decision.get("comment") else ""
+        )
+        return {
+            "approvals": {step["id"]: record},
+            "results": {
+                step["id"]: {
+                    "tool": step["tool"],
+                    "arguments": prepared,
+                    "status": "rejected",
+                    "ok": False,
+                    "error": reason,
+                }
+            },
+            "stopped": f"{step['id']} ({step['tool']}) was {reason}",
+            "approval_error": None,
+            "choices": choices,
+        }
+    final = dict(prepared)
+    if decision["decision"] == "edit":
+        final |= decision.get("arguments") or {}
+        try:
+            tool.input_model.model_validate(final)
+        except ValidationError as error:
+            return {"approval_error": f"The edit isn't valid: {validation_summary(error)}"}
+    record = _approval_record(step, decision, final, level, ctx, preview)
+    get_stream_writer()({"event": "approval_decided", "step": step["id"], **record})
+    return {"approvals": {step["id"]: record}, "approval_error": None, "choices": choices}
+
+
+def _decision(raw: Any) -> dict[str, Any]:
+    """Accepts {"decision": approve|reject|edit, "arguments"?, "comment"?} or a plain word."""
+    if isinstance(raw, dict):
+        data = cast(dict[str, Any], raw)
+    else:
+        data = {"decision": str(raw)}
+    word = str(data.get("decision", "")).strip().casefold()
+    if word in ("approve", "approved", "yes", "y", "ok"):
+        data["decision"] = "approve"
+    elif word in ("edit", "edited") and isinstance(data.get("arguments"), dict):
+        data["decision"] = "edit"
+    else:
+        # Anything unclear is a no: a write needs an explicit yes.
+        data["decision"] = "reject"
+    return data
+
+
+def _approval_record(
+    step: dict[str, Any],
+    decision: dict[str, Any],
+    arguments: dict[str, Any],
+    level: str,
+    ctx: HrContext,
+    preview: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "tool": step["tool"],
+        "decision": {"approve": "approved", "edit": "edited", "reject": "rejected"}[
+            decision["decision"]
+        ],
+        "arguments": arguments,
+        "hash": plan_hash(arguments),
+        "risk": level,
+        "by": ctx.tools.user.id,
+        "comment": decision.get("comment"),
+        "preview": preview,
+    }
 
 
 def ask_which(error: UnresolvedReference) -> int | None:
@@ -474,10 +764,6 @@ def _describe(candidate: Any) -> str:
     return str(candidate)
 
 
-def route_after_step(state: HrState) -> str:
-    return "execute_step" if next_step(state) else "verify"
-
-
 async def verify(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
     """Read-only plans: did every step run? (Writes get real checks in M7.)
 
@@ -490,8 +776,11 @@ async def verify(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
         result = state.get("results", {}).get(step["id"])
         where = f"{step['id']} ({step['tool']})"
         if result is None:
-            problems.append(f"{where} never ran.")
-        elif result.get("status") == "skipped":
+            if state.get("stopped"):
+                findings.append(f"{where} not run: stopped because {state.get('stopped')}.")
+            else:
+                problems.append(f"{where} never ran.")
+        elif result.get("status") in ("skipped", "rejected"):
             findings.append(f"{where} {result.get('error')}")
         elif not result.get("ok"):
             problems.append(f"{where} failed: {result.get('error')}")
@@ -528,6 +817,11 @@ async def respond(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]
             parts.append(f"{step['id']} {step['tool']} ({step['reason']}): {content}")
     for passage in state.get("policy", []):
         parts.append(f"Policy passage [{passage['citation']}]: {passage['text']}")
+    for step_id, approval in state.get("approvals", {}).items():
+        parts.append(
+            f"Approval for {step_id} ({approval['tool']}): {approval['decision']} by the user"
+            + (f", comment: {approval['comment']}" if approval.get("comment") else "")
+        )
     verification = state.get("verification", {})
     if verification.get("problems"):
         parts.append("Steps that failed: " + "; ".join(verification["problems"]))
@@ -574,6 +868,8 @@ def build_hr_graph(
         "retrieve_policy": retrieve_policy,
         "plan": plan,
         "validate_plan": validate_plan,
+        "ask_value": ask_value,
+        "approve": approve,
         "execute_step": execute_step,
         "verify": verify,
         "respond": respond,
@@ -591,10 +887,12 @@ def build_hr_graph(
     graph.add_edge("answer_simple", END)
     graph.add_edge("retrieve_policy", "plan")
     graph.add_edge("plan", "validate_plan")
+    after_steps = ["ask_value", "approve", "execute_step", "verify"]
     graph.add_conditional_edges(
-        "validate_plan", route_after_validate, ["plan", "execute_step", "respond"]
+        "validate_plan", route_after_validate, ["plan", "respond", *after_steps]
     )
-    graph.add_conditional_edges("execute_step", route_after_step, ["execute_step", "verify"])
+    for node in ("ask_value", "approve", "execute_step"):
+        graph.add_conditional_edges(node, route_next, after_steps)
     graph.add_edge("verify", "respond")
     graph.add_edge("respond", END)
     return graph.compile(checkpointer=checkpointer)

@@ -316,7 +316,7 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 
 ---
 
-## M6: Write tools, risk levels and human approval (~5 days)
+## M6: Write tools, risk levels and human approval (~5 days) ✅
 
 **Learn**
 - Side effects and irreversibility; risk classes (README §11: low runs automatically, medium needs configurable approval, high always needs approval).
@@ -326,18 +326,18 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 - Why the approval decision never belongs to the model.
 
 **Build**
-- [ ] A6.1 *(HR API)* Record `actorType: AI` and the run id in the audit log for agent calls; add `Idempotency-Key` support (store key → response) on the POST endpoints the agent uses.
-- [ ] A6.2 Write tools: `create_employee`, `update_employee` (fetches the version first), `change_manager`, `change_department`, `start_onboarding`, `update_onboarding_task`, `create_leave_request` (always previews first), `approve_leave`, `reject_leave`, `propose_attendance_correction`, and `send_email` (a stub that writes to an outbox table and never sends).
-- [ ] A6.3 Risk policy in a config file, per tool and per field (e.g. a manager change is medium), enforced by the graph, never by the prompt.
-- [ ] A6.4 Approval node: show the plan, a before → after diff and the policy evidence. The user approves, rejects or edits the arguments; the run resumes or ends with an explanation. Approvals are stored (`Approval` table).
-- [ ] A6.5 "Never invent data": every argument must trace back to the user's words, a resolved entity or a tool result. Unsupported values (an invented email, say) make the agent ask instead.
-- [ ] A6.6 The headline scenario on `hr_test`: "Onboard Priya as a Software Engineer joining October 12, reporting to Rahul in Bangalore."
+- [x] A6.1 *(HR API)* Record `actorType: AI` and the run id in the audit log for agent calls; add `Idempotency-Key` support (store key → response) on the POST endpoints the agent uses.
+- [x] A6.2 Write tools: `create_employee`, `update_employee` (fetches the version first), `change_manager`, `change_department`, `start_onboarding`, `update_onboarding_task`, `create_leave_request` (always previews first), `approve_leave`, `reject_leave`, `propose_attendance_correction`, and `send_email` (a stub that writes to an outbox table and never sends). (`tools/hr_write.py`, plus `list_departments`.)
+- [x] A6.3 Risk policy in a config file, per tool and per field (e.g. a manager change is medium), enforced by the graph, never by the prompt. (`agent/risk.yaml`, `agent/risk.py`.)
+- [x] A6.4 Approval node: show the plan, a before → after diff and the policy evidence. The user approves, rejects or edits the arguments; the run resumes or ends with an explanation. Approvals are stored (`Approval` table).
+- [x] A6.5 "Never invent data": every argument must trace back to the user's words, a resolved entity or a tool result. Unsupported values (an invented email, say) make the agent ask instead. (`agent/provenance.py`; ids go back to the planner, never to the user.)
+- [x] A6.6 The headline scenario on `hr_test`: "Onboard Priya as a Software Engineer joining October 12, reporting to Rahul in Bangalore."
   1. Resolve Rahul and Engineering.
   2. Approval for creating the employee.
   3. Create the employee, then start onboarding.
   4. Report what's still missing (documents, phone).
 
-  Run it with `FakeLLM` in CI and with the real model manually.
+  Run it with `FakeLLM` in CI and with the real model manually. (`tests/test_onboard_priya.py`; live on `hr_test` 2026-10-04: EMP-0059, audit `AI`, one employee after a double replay.)
 
 **Check yourself**
 - Where does the approval decision live, and what stops the model skipping it?

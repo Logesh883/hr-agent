@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from pydantic import BaseModel, ConfigDict
 
@@ -20,7 +20,8 @@ if TYPE_CHECKING:
 
 
 class Risk(StrEnum):
-    """How much harm a wrong call can do. M3 has only reads; M6 adds writes behind approval."""
+    """Whether a tool changes anything. How *risky* a particular write is (low / medium /
+    high, and so whether it needs approval) is the risk policy's call (agent/risk.py)."""
 
     READ = "read"
     WRITE = "write"
@@ -42,6 +43,15 @@ class ToolContext:
     # Policy search (M4); None when embeddings aren't configured, and then the agent isn't
     # offered `search_policy` at all.
     policies: "PolicyRetriever | None" = None
+    # Write tools send this as Idempotency-Key: stable for one plan step, so a retried or
+    # resumed step returns the first result instead of acting twice.
+    idempotency_key: str | None = None
+    # Where send_email writes (it never sends). None: the tool refuses.
+    outbox: "Outbox | None" = None
+
+
+class Outbox(Protocol):
+    async def add(self, message: dict[str, Any]) -> str: ...
 
 
 class ToolError(Exception):
@@ -74,6 +84,9 @@ class Tool[ArgsT: ToolInput]:
     run: Callable[[ToolContext, ArgsT], Awaitable[Any]]
     risk: Risk = Risk.READ
     timeout_s: float = 15.0
+    # Write tools: what would change, as {"summary", "before", "after"}, computed without
+    # changing anything. Shown for approval (A6.4).
+    preview: Callable[[ToolContext, ArgsT], Awaitable[dict[str, Any]]] | None = None
 
     def spec(self) -> ToolSpec:
         """The OpenAI-format definition sent to the model."""

@@ -26,7 +26,14 @@ from pydantic import BaseModel
 from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from graphs.records import agent_run, tool_call, workflow_event, workflow_run
+from graphs.records import (
+    agent_run,
+    approval,
+    email_outbox,
+    tool_call,
+    workflow_event,
+    workflow_run,
+)
 from rag.db import SCHEMA
 from tracing.trace import Trace
 
@@ -100,6 +107,9 @@ class RunStore(Protocol):
         self, run_id: str, trace: Trace, *, skip: set[str] | None = None
     ) -> set[str]: ...
     async def mark_interrupted(self) -> int: ...
+    async def record_approval(
+        self, run_id: str, step_id: str, decision: dict[str, Any]
+    ) -> None: ...
     async def aclose(self) -> None: ...
 
 
@@ -147,6 +157,21 @@ def trace_records(
                 }
             )
     return agents, tools, used
+
+
+def approval_row(run_id: str, step_id: str, decision: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": str(uuid4()),
+        "workflow_run_id": run_id,
+        "step_id": step_id,
+        "tool": decision["tool"],
+        "risk": decision["risk"],
+        "decision": decision["decision"],
+        "arguments": _jsonable(decision["arguments"]),
+        "preview": _jsonable(decision.get("preview")),
+        "comment": decision.get("comment"),
+        "decided_by": decision["by"],
+    }
 
 
 def _succeeded(output: Any) -> bool:
@@ -210,6 +235,10 @@ class PostgresRunStore:
                 await conn.execute(insert(tool_call), tools)
         return used
 
+    async def record_approval(self, run_id: str, step_id: str, decision: dict[str, Any]) -> None:
+        async with self.engine.begin() as conn:
+            await conn.execute(insert(approval).values(**approval_row(run_id, step_id, decision)))
+
     async def mark_interrupted(self) -> int:
         """At startup: runs still `running` belonged to a process that's gone."""
         async with self.engine.begin() as conn:
@@ -229,6 +258,7 @@ class MemoryRunStore:
         self.event_log: list[tuple[int, str, dict[str, Any]]] = []
         self.agent_runs: list[dict[str, Any]] = []
         self.tool_calls: list[dict[str, Any]] = []
+        self.approvals: list[dict[str, Any]] = []
 
     async def aclose(self) -> None:
         return None
@@ -259,6 +289,9 @@ class MemoryRunStore:
         self.agent_runs.extend(agents)
         self.tool_calls.extend(tools)
         return used
+
+    async def record_approval(self, run_id: str, step_id: str, decision: dict[str, Any]) -> None:
+        self.approvals.append(approval_row(run_id, step_id, decision))
 
     async def mark_interrupted(self) -> int:
         stale = [run_id for run_id, run in self.runs.items() if run.status == "running"]
@@ -299,3 +332,47 @@ def summarize_state(values: dict[str, Any]) -> dict[str, Any]:
         else None,
         "verification": values.get("verification"),
     }
+
+
+class PostgresOutbox:
+    """send_email's destination: queued rows that nothing sends. A retried step (same
+    idempotency key) gets the first message's id instead of queueing another."""
+
+    def __init__(self, engine: AsyncEngine) -> None:
+        self.engine = engine
+
+    async def add(self, message: dict[str, Any]) -> str:
+        key = message.get("idempotency_key")
+        async with self.engine.begin() as conn:
+            if key:
+                existing = await conn.scalar(
+                    select(email_outbox.c.id).where(email_outbox.c.idempotency_key == key)
+                )
+                if existing:
+                    return str(existing)
+            message_id = str(uuid4())
+            await conn.execute(
+                insert(email_outbox).values(
+                    id=message_id,
+                    to_address=message["to"],
+                    subject=message["subject"],
+                    body=message["body"],
+                    idempotency_key=key,
+                )
+            )
+            return message_id
+
+
+class MemoryOutbox:
+    def __init__(self) -> None:
+        self.messages: dict[str, dict[str, Any]] = {}
+
+    async def add(self, message: dict[str, Any]) -> str:
+        for message_id, queued in self.messages.items():
+            if message.get("idempotency_key") and queued.get("idempotency_key") == message.get(
+                "idempotency_key"
+            ):
+                return message_id
+        message_id = str(uuid4())
+        self.messages[message_id] = message
+        return message_id

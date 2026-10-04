@@ -31,7 +31,7 @@ from app.llm_routes import build_messages
 from app.log import configure_logging
 from app.settings import get_settings
 from graphs.hr_agent import build_hr_graph
-from graphs.persistence import PostgresRunStore, open_checkpointer
+from graphs.persistence import PostgresOutbox, PostgresRunStore, open_checkpointer
 from graphs.service import Caller, RunConflict, RunService
 from intent.entity_resolution import resolve_entities_with_tools
 from intent.parser import parse_request
@@ -418,6 +418,7 @@ async def _run(args: argparse.Namespace) -> int:
                 hr_api_url=settings.hr_api_url,
                 hr_api_timeout=settings.hr_api_timeout,
                 policies=policies,
+                outbox=PostgresOutbox(store.engine),
             )
             if args.resume:
                 record, task = await service.resume(caller, args.resume, None)
@@ -430,9 +431,18 @@ async def _run(args: argparse.Namespace) -> int:
                 current = await store.get(record.id)
                 if current is None or current.status != "waiting" or not current.question:
                     break
-                prompt_text = f"? {current.question['question']}\n  "
+                _print_question(current.question)
+                prompt_text = "  > "
                 # Off the event loop: nothing else needs it while we wait for the user.
-                answer = (await asyncio.to_thread(input, prompt_text)).strip()
+                try:
+                    answer = (await asyncio.to_thread(input, prompt_text)).strip()
+                except EOFError:
+                    print(
+                        f"\nNo answer given; the run is waiting. Continue it later with\n"
+                        f"  hr-ai run --resume {record.id} --login {args.login}",
+                        file=sys.stderr,
+                    )
+                    return 3
                 record, task = await service.resume(caller, record.id, answer)
             final = await store.get(record.id)
             if final and final.answer:
@@ -446,6 +456,27 @@ async def _run(args: argparse.Namespace) -> int:
         await llm.aclose()
         await exporter.aclose()
         await close_policy_retriever(policies)
+
+
+def _print_question(question: dict[str, Any]) -> None:
+    """Approvals show exactly what would change; choices list the options."""
+    print(f"\n? {question['question']}", file=sys.stderr)
+    if question.get("type") == "approval":
+        print(f"  risk: {question.get('risk')}   why: {question.get('reason')}", file=sys.stderr)
+        before: dict[str, Any] = question.get("before") or {}
+        after: dict[str, Any] = question.get("after") or {}
+        for name in after:
+            old = before.get(name, "—")
+            print(f"    {name}: {old} → {after[name]}", file=sys.stderr)
+        for problem in question.get("problems", []):
+            print(f"  ! {problem}", file=sys.stderr)
+        if question.get("error"):
+            print(f"  ! {question['error']}", file=sys.stderr)
+        print("  type approve or reject", file=sys.stderr)
+    for option in question.get("options", []):
+        print(f"    - {option}", file=sys.stderr)
+    if question.get("type") == "value" and question.get("error"):
+        print(f"  ! {question['error']}", file=sys.stderr)
 
 
 async def _follow(

@@ -145,12 +145,28 @@ class HrApiClient:
     Share one `httpx.AsyncClient` (it pools connections); create one of these per request.
     """
 
-    def __init__(self, http: httpx.AsyncClient, token: str | None = None) -> None:
+    def __init__(
+        self,
+        http: httpx.AsyncClient,
+        token: str | None = None,
+        *,
+        agent_run_id: str | None = None,
+    ) -> None:
         self._http = http
         self._token = token
+        # Sent as X-Agent-Run-Id: the HR API marks audit entries as made by the AI agent.
+        self.agent_run_id = agent_run_id
 
     def with_token(self, token: str) -> "HrApiClient":
-        return HrApiClient(self._http, token)
+        return HrApiClient(self._http, token, agent_run_id=self.agent_run_id)
+
+    def _headers(self, idempotency_key: str | None = None) -> dict[str, str]:
+        headers = {"Authorization": f"Bearer {self._token}"} if self._token else {}
+        if self.agent_run_id:
+            headers["X-Agent-Run-Id"] = self.agent_run_id
+        if idempotency_key:
+            headers["Idempotency-Key"] = idempotency_key
+        return headers
 
     async def request(
         self,
@@ -159,9 +175,12 @@ class HrApiClient:
         *,
         json: Any = None,
         params: dict[str, Any] | None = None,
+        idempotency_key: str | None = None,
     ) -> Any:
-        """Sends a request and returns the decoded JSON body (None for an empty body)."""
-        headers = {"Authorization": f"Bearer {self._token}"} if self._token else {}
+        """Sends a request and returns the decoded JSON body (None for an empty body).
+        `idempotency_key` makes a retried write return the first result instead of acting
+        twice (the HR API stores key → response per user)."""
+        headers = self._headers(idempotency_key)
         try:
             response = await self._http.request(
                 method, path, json=json, params=params, headers=headers
@@ -175,9 +194,8 @@ class HrApiClient:
 
     async def download(self, path: str) -> tuple[bytes, str]:
         """A file endpoint's body and Content-Type."""
-        headers = {"Authorization": f"Bearer {self._token}"} if self._token else {}
         try:
-            response = await self._http.get(path, headers=headers)
+            response = await self._http.get(path, headers=self._headers())
         except httpx.TransportError as error:
             raise HrApiUnavailableError(f"HR API unreachable: {error!r}") from error
         if response.is_error:
@@ -187,11 +205,13 @@ class HrApiClient:
     async def get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
         return await self.request("GET", path, params=params)
 
-    async def post(self, path: str, json: Any = None) -> Any:
-        return await self.request("POST", path, json=json)
+    async def post(self, path: str, json: Any = None, *, idempotency_key: str | None = None) -> Any:
+        return await self.request("POST", path, json=json, idempotency_key=idempotency_key)
 
-    async def patch(self, path: str, json: Any = None) -> Any:
-        return await self.request("PATCH", path, json=json)
+    async def patch(
+        self, path: str, json: Any = None, *, idempotency_key: str | None = None
+    ) -> Any:
+        return await self.request("PATCH", path, json=json, idempotency_key=idempotency_key)
 
     async def delete(self, path: str) -> Any:
         return await self.request("DELETE", path)

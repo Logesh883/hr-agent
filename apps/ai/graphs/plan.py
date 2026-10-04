@@ -29,6 +29,8 @@ from tools.base import Risk, ToolInput
 from tools.registry import ToolRegistry, validation_summary
 
 MAX_PLAN_STEPS = 8
+# The planner writes "?" for a value it needs but wasn't given; code asks the user (A6.5).
+ASK_USER = "?"
 _REFERENCE = re.compile(r"^\$(s\d+)((?:\.[A-Za-z0-9_]+)*)$")
 
 
@@ -109,6 +111,8 @@ def _check_arguments(step: PlanStep, model: type[ToolInput], earlier: set[str]) 
             if reference[0] not in earlier:
                 problems.append(f"'{name}' refers to {reference[0]}, which isn't an earlier step.")
             continue
+        if value == ASK_USER:
+            continue  # asked for before the step runs
         try:
             # Validates one field with the tool's own rules, without the others.
             model.__pydantic_validator__.validate_assignment(blank, name, value)
@@ -124,6 +128,10 @@ def _reference(value: Any) -> tuple[str, list[str]] | None:
     if match is None:
         return None
     return match.group(1), [part for part in match.group(2).split(".") if part]
+
+
+def is_reference(value: Any) -> bool:
+    return _reference(value) is not None
 
 
 def references(step: dict[str, Any]) -> set[str]:

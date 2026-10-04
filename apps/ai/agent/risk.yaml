@@ -1,0 +1,30 @@
+# A6.3: how risky each write is, and so whether it needs a human's approval. Enforced by the
+# graph (agent/risk.py), never by the prompt: the model's own risk labels are ignored.
+#
+#   low     runs without asking
+#   medium  asks if `approval.medium` is true (README §11: configurable)
+#   high    always asks
+#
+# Per tool, optionally per field: the riskiest field present in a call wins.
+approval:
+  medium: true
+
+# Any write tool not listed here is treated as high.
+default: high
+
+tools:
+  create_employee: medium
+  update_employee:
+    default: low
+    fields:
+      status: medium
+      employment_type: medium
+  change_manager: medium
+  change_department: medium
+  start_onboarding: low
+  update_onboarding_task: low
+  create_leave_request: low          # checked against the leave rules before it's sent
+  approve_leave: high
+  reject_leave: high
+  propose_attendance_correction: low # only a proposal: HR approves it in the app
+  send_email: high                   # leaves the company; a stub here, but treated as real

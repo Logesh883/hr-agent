@@ -25,10 +25,10 @@ import httpx
 from app.hr_client import HrApiClient, SessionUser
 from graphs.hr_agent import HrContext
 from graphs.persistence import TERMINAL, RunRecord, RunStore
-from graphs.runner import EventSink, HrGraph, RunOutcome, resume_run, start_run
+from graphs.runner import Answer, EventSink, HrGraph, RunOutcome, resume_run, start_run
 from llm.base import LLMClient
 from rag.retrieval import PolicyRetriever
-from tools.base import ToolContext
+from tools.base import Outbox, ToolContext
 from tracing.langfuse import TraceExporter
 from tracing.trace import Trace
 
@@ -61,6 +61,7 @@ class RunService:
         hr_api_url: str,
         hr_api_timeout: float = 10.0,
         policies: PolicyRetriever | None = None,
+        outbox: Outbox | None = None,
         today: Callable[[], date] = date.today,
     ) -> None:
         self.graph = graph
@@ -70,6 +71,7 @@ class RunService:
         self.hr_api_url = hr_api_url
         self.hr_api_timeout = hr_api_timeout
         self.policies = policies
+        self.outbox = outbox
         self.today = today
         self._tasks: dict[str, asyncio.Task[None]] = {}
 
@@ -84,7 +86,7 @@ class RunService:
         return run, self._launch(run, caller, action)
 
     async def resume(
-        self, caller: Caller, run_id: str, answer: str | None
+        self, caller: Caller, run_id: str, answer: Answer
     ) -> tuple[RunRecord, asyncio.Task[None]]:
         run = await self.get_for(caller, run_id)
         if run is None:
@@ -145,6 +147,8 @@ class RunService:
 
         async def on_event(event: dict[str, Any]) -> None:
             await self.store.add_event(run.id, event)
+            if event["event"] == "approval_decided":
+                await self.store.record_approval(run.id, event["step"], event)
             if event["event"] == "node_finished":
                 # Record each node's LLM and tool calls as soon as it's done, so a killed
                 # process loses at most the node it was in.
@@ -152,10 +156,13 @@ class RunService:
 
         async with httpx.AsyncClient(base_url=self.hr_api_url, timeout=self.hr_api_timeout) as http:
             tools = ToolContext(
-                hr=HrApiClient(http, caller.token),
+                # The run id goes to the HR API as X-Agent-Run-Id: its audit entries are
+                # then marked AI, with this run.
+                hr=HrApiClient(http, caller.token, agent_run_id=run.id),
                 user=caller.user,
                 today=self.today(),
                 policies=self.policies,
+                outbox=self.outbox,
             )
             context = HrContext(llm=self.llm, tools=tools, trace=trace)
             try:

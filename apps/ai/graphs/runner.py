@@ -53,11 +53,15 @@ async def start_run(
     return await _drive(graph, {"request": request}, thread_id, context, on_event)
 
 
+Answer = str | dict[str, Any] | None
+
+
 async def resume_run(
-    graph: HrGraph, thread_id: str, answer: str | None, context: HrContext, on_event: EventSink
+    graph: HrGraph, thread_id: str, answer: Answer, context: HrContext, on_event: EventSink
 ) -> RunOutcome:
-    """With an answer: reply to the pending question. Without: continue from the last
-    checkpoint (e.g. after the server restarted mid-run)."""
+    """With an answer: reply to the pending question (text, or an approval decision such as
+    {"decision": "approve"}). Without: continue from the last checkpoint (e.g. after the
+    server restarted mid-run)."""
     payload = None if answer is None else Command(resume=answer)
     return await _drive(graph, payload, thread_id, context, on_event)
 
