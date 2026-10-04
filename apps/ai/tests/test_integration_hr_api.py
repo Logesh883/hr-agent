@@ -15,9 +15,11 @@ This is where contract drift shows up for real: every tool validates the live re
 against the generated models, so a field the API stopped sending fails here.
 """
 
+import json
 import os
 from collections.abc import AsyncIterator
 from datetime import date
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -110,13 +112,11 @@ async def test_employee_is_limited_to_their_own_records(http: httpx.AsyncClient)
     own = await run(sneha, "get_leave_balances", f'{{"employee_id": "{sneha.user.employee_id}"}}')
     payroll = await run(sneha, "get_payroll_readiness", f'{{"month": "{month}"}}')
 
-    assert search.error == (
-        "You don't have access to that. The HR system refused: "
-        "Your role (EMPLOYEE) lacks permission: employee:read."
-    )
+    # Refused by the agent's own per-role allow-list (A8.1) before the API is asked.
+    assert search.error == "'search_employee' isn't available to your role (EMPLOYEE)."
     assert colleague.error == "You don't have access to that employee, or no such employee exists."
     assert own.ok, own.error
-    assert payroll.error and "lacks permission: payroll:read" in payroll.error
+    assert payroll.error == "'get_payroll_readiness' isn't available to your role (EMPLOYEE)."
 
 
 async def test_agent_loop_against_the_real_api(http: httpx.AsyncClient) -> None:
@@ -135,3 +135,57 @@ async def test_agent_loop_against_the_real_api(http: httpx.AsyncClient) -> None:
     assert [c.ok for s in run_.steps for c in s.tool_calls] == [True, True]
     balances = run_.steps[1].tool_calls[0].data["balances"]
     assert {b["type"] for b in balances} == {"ANNUAL", "SICK", "CASUAL", "UNPAID"}
+
+
+async def test_write_tools_go_through_the_tool_api(http: httpx.AsyncClient) -> None:
+    """Phase 3: every agent write is a `POST /tools/:name` call, audited as AI with the tool's
+    name and the run id. Creates a throwaway employee in hr_test (the API's e2e setup
+    re-seeds it) and changes it through each employee tool."""
+    from tools.hr_write import DEPARTMENT_TOOL, WRITE_TOOLS
+    from tools.registry import ToolRegistry
+
+    registry = ToolRegistry([*WRITE_TOOLS, DEPARTMENT_TOOL])
+    run_id = str(uuid4())
+    login = await HrApiClient(http).login("hr@hr.local", PASSWORD)
+    hr = HrApiClient(http, login.access_token, agent_run_id=run_id)
+
+    async def write(step: str, name: str, arguments: dict[str, object]) -> ToolResult:
+        ctx = ToolContext(
+            hr=hr, user=login.user, today=date.today(), idempotency_key=f"{run_id}:{step}"
+        )
+        result = await registry.execute(
+            ToolCall(id=step, name=name, arguments=json.dumps(arguments)), ctx
+        )
+        assert result.ok, f"{name}: {result.error}"
+        return result
+
+    hr_ctx = await sign_in(http, "hr@hr.local")
+    departments = (await write("s0", "list_departments", {})).data["departments"]
+    eng = next(d["id"] for d in departments if d["code"] == "ENG")
+    product = next(d["id"] for d in departments if d["code"] != "ENG")
+    rahul = await find(hr_ctx, "Rahul")
+    email = f"tool.live.{run_id[:8]}@acme.example"
+
+    created = await write(
+        "s1",
+        "create_employee",
+        {
+            "first_name": "Live",
+            "last_name": "Tool",
+            "email": email,
+            "job_title": "Software Engineer",
+            "department_id": eng,
+            "location": "Bangalore",
+            "joining_date": "2026-11-02",
+        },
+    )
+    employee_id = created.data["id"]
+    await write("s2", "change_manager", {"employee_id": employee_id, "manager_id": rahul})
+    await write("s3", "change_department", {"employee_id": employee_id, "department_id": product})
+    await write("s4", "update_employee", {"employee_id": employee_id, "job_title": "Engineer II"})
+    await write("s5", "start_onboarding", {"employee_id": employee_id})
+
+    audit = await hr.get("/audit-logs", params={"entityType": "Employee", "entityId": employee_id})
+    seen = {(e["toolName"], e["actorType"], e["agentRunId"]) for e in audit["items"]}
+    for tool in ("create_employee", "change_manager", "change_department", "update_employee"):
+        assert (tool, "AI", run_id) in seen, seen

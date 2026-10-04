@@ -1,4 +1,6 @@
-"""A6.2: tools that change HR data. Each wraps one HR API write, with the user's token.
+"""A6.2: tools that change HR data. Each calls one HR API Tool API tool (`POST /tools/:name`,
+web Phase 3), with the user's token, so every AI mutation goes through a typed, audited tool
+endpoint. Reads (lookups, previews, read-backs) use the ordinary REST endpoints.
 
 Every write tool:
 - validates its request against the generated contract model before sending;
@@ -28,6 +30,13 @@ EMPLOYEE_FIELDS = ("job_title", "location", "phone", "employment_type", "status"
 def _body(model: type[BaseModel], **values: Any) -> dict[str, Any]:
     """A request body checked against the generated contract; camelCase, unset fields out."""
     return model.model_validate(values).model_dump(mode="json", by_alias=True, exclude_none=True)
+
+
+async def _call(ctx: ToolContext, tool: str, body: dict[str, Any], key: str | None = None) -> Any:
+    """Runs one HR API tool. `key` overrides the step's idempotency key."""
+    return await ctx.hr.post(
+        f"/tools/{tool}", body, idempotency_key=key if key is not None else ctx.idempotency_key
+    )
 
 
 async def _employee(ctx: ToolContext, employee_id: UUID) -> api.Employee:
@@ -106,7 +115,7 @@ async def preview_create_employee(ctx: ToolContext, args: CreateEmployeeInput) -
 
 
 async def create_employee(ctx: ToolContext, args: CreateEmployeeInput) -> dict[str, Any]:
-    data = await ctx.hr.post("/employees", _create_body(args), idempotency_key=ctx.idempotency_key)
+    data = await _call(ctx, "create_employee", _create_body(args))
     e = api.Employee.model_validate(data)
     return {"id": str(e.id), "version": e.version} | _employee_view(e)
 
@@ -137,19 +146,33 @@ def _changes(args: ToolInput) -> dict[str, Any]:
     return args.model_dump(exclude={"employee_id"}, exclude_none=True)
 
 
-async def _patch_employee(ctx: ToolContext, employee_id: UUID, changes: dict[str, Any]) -> Any:
+_EMPLOYEE_TOOL_MODELS: dict[str, type[BaseModel]] = {
+    "update_employee": api.UpdateEmployeeTool,
+    "change_manager": api.ChangeManagerTool,
+    "change_department": api.ChangeDepartmentTool,
+}
+
+
+async def _patch_employee(
+    ctx: ToolContext, tool: str, employee_id: UUID, changes: dict[str, Any]
+) -> Any:
     """Optimistic locking from the tool's side: read the version, write with it. If someone
     changed the record in between, the API answers 409 and nothing is overwritten."""
     if not changes:
         raise ToolError("Nothing to change: give at least one field.")
     for attempt in range(2):
         current = await _employee(ctx, employee_id)
-        body = _body(api.UpdateEmployee, **changes, version=current.version)
+        body = _body(
+            _EMPLOYEE_TOOL_MODELS[tool],
+            employee_id=employee_id,
+            **changes,
+            version=current.version,
+        )
         # The first attempt's 409 is stored under its key as a final answer, so a retry
         # with a fresh version needs its own (still stable) key.
         key = ctx.idempotency_key and (ctx.idempotency_key + (f":r{attempt}" if attempt else ""))
         try:
-            data = await ctx.hr.patch(f"/employees/{employee_id}", body, idempotency_key=key)
+            data = await _call(ctx, tool, body, key)
         except HrApiError as error:
             # A7.3 "409 stale version: re-read and retry once".
             if (
@@ -186,7 +209,7 @@ async def _preview_patch(
 
 
 async def update_employee(ctx: ToolContext, args: UpdateEmployeeInput) -> dict[str, Any]:
-    return await _patch_employee(ctx, args.employee_id, _changes(args))
+    return await _patch_employee(ctx, "update_employee", args.employee_id, _changes(args))
 
 
 async def preview_update_employee(ctx: ToolContext, args: UpdateEmployeeInput) -> dict[str, Any]:
@@ -194,7 +217,9 @@ async def preview_update_employee(ctx: ToolContext, args: UpdateEmployeeInput) -
 
 
 async def change_manager(ctx: ToolContext, args: ChangeManagerInput) -> dict[str, Any]:
-    return await _patch_employee(ctx, args.employee_id, {"manager_id": args.manager_id})
+    return await _patch_employee(
+        ctx, "change_manager", args.employee_id, {"manager_id": args.manager_id}
+    )
 
 
 async def preview_change_manager(ctx: ToolContext, args: ChangeManagerInput) -> dict[str, Any]:
@@ -202,7 +227,9 @@ async def preview_change_manager(ctx: ToolContext, args: ChangeManagerInput) -> 
 
 
 async def change_department(ctx: ToolContext, args: ChangeDepartmentInput) -> dict[str, Any]:
-    return await _patch_employee(ctx, args.employee_id, {"department_id": args.department_id})
+    return await _patch_employee(
+        ctx, "change_department", args.employee_id, {"department_id": args.department_id}
+    )
 
 
 async def preview_change_department(
@@ -219,8 +246,8 @@ class StartOnboardingInput(ToolInput):
 
 
 async def start_onboarding(ctx: ToolContext, args: StartOnboardingInput) -> dict[str, Any]:
-    data = await ctx.hr.post(
-        f"/employees/{args.employee_id}/onboarding", idempotency_key=ctx.idempotency_key
+    data = await _call(
+        ctx, "start_onboarding", _body(api.StartOnboardingTool, employee_id=args.employee_id)
     )
     onboarding = api.EmployeeOnboarding.model_validate(data)
     return {
@@ -241,7 +268,7 @@ async def preview_start_onboarding(ctx: ToolContext, args: StartOnboardingInput)
 
 class UpdateOnboardingTaskInput(ToolInput):
     task_id: UUID = Field(description="A task id from get_onboarding_status.")
-    status: Literal["PENDING", "IN_PROGRESS", "DONE", "SKIPPED"] | None = None
+    status: Literal["PENDING", "DONE", "SKIPPED"] | None = None
     notes: str | None = Field(default=None, max_length=1000)
     due_date: date | None = None
 
@@ -250,11 +277,13 @@ async def update_onboarding_task(
     ctx: ToolContext, args: UpdateOnboardingTaskInput
 ) -> dict[str, Any]:
     body = _body(
-        api.UpdateOnboardingTask, status=args.status, notes=args.notes, due_date=args.due_date
+        api.UpdateOnboardingTaskTool,
+        task_id=args.task_id,
+        status=args.status,
+        notes=args.notes,
+        due_date=args.due_date,
     )
-    data = await ctx.hr.patch(
-        f"/onboarding/tasks/{args.task_id}", body, idempotency_key=ctx.idempotency_key
-    )
+    data = await _call(ctx, "update_onboarding_task", body)
     return api.OnboardingTask.model_validate(data).model_dump(mode="json")
 
 
@@ -310,9 +339,7 @@ async def create_leave_request(ctx: ToolContext, args: CreateLeaveInput) -> dict
         raise ToolError(
             "The leave request breaks the rules: " + "; ".join(p.message for p in preview.problems)
         )
-    data = await ctx.hr.post(
-        "/leave-requests", _leave_body(args), idempotency_key=ctx.idempotency_key
-    )
+    data = await _call(ctx, "create_leave_request", _leave_body(args))
     leave = api.LeaveRequest.model_validate(data)
     return {"id": str(leave.id), "status": leave.status, "days": leave.days}
 
@@ -363,12 +390,8 @@ async def _preview_decision(ctx: ToolContext, leave_id: UUID, status: str) -> di
 
 async def approve_leave(ctx: ToolContext, args: DecideLeaveInput) -> dict[str, Any]:
     _not_own(ctx, await _leave(ctx, args.leave_request_id))
-    body = _body(api.ApproveLeave, comment=args.comment)
-    data = await ctx.hr.post(
-        f"/leave-requests/{args.leave_request_id}/approve",
-        body,
-        idempotency_key=ctx.idempotency_key,
-    )
+    body = _body(api.ApproveLeaveTool, leave_request_id=args.leave_request_id, comment=args.comment)
+    data = await _call(ctx, "approve_leave", body)
     return _leave_view(api.LeaveRequest.model_validate(data))
 
 
@@ -378,10 +401,8 @@ async def preview_approve_leave(ctx: ToolContext, args: DecideLeaveInput) -> dic
 
 async def reject_leave(ctx: ToolContext, args: RejectLeaveInput) -> dict[str, Any]:
     _not_own(ctx, await _leave(ctx, args.leave_request_id))
-    body = _body(api.RejectLeave, reason=args.reason)
-    data = await ctx.hr.post(
-        f"/leave-requests/{args.leave_request_id}/reject", body, idempotency_key=ctx.idempotency_key
-    )
+    body = _body(api.RejectLeaveTool, leave_request_id=args.leave_request_id, reason=args.reason)
+    data = await _call(ctx, "reject_leave", body)
     return _leave_view(api.LeaveRequest.model_validate(data))
 
 
@@ -416,9 +437,7 @@ def _correction_body(args: ProposeCorrectionInput) -> dict[str, Any]:
 async def propose_attendance_correction(
     ctx: ToolContext, args: ProposeCorrectionInput
 ) -> dict[str, Any]:
-    data = await ctx.hr.post(
-        "/attendance/corrections", _correction_body(args), idempotency_key=ctx.idempotency_key
-    )
+    data = await _call(ctx, "propose_attendance_correction", _correction_body(args))
     return {"id": data.get("id"), "status": data.get("status")}
 
 

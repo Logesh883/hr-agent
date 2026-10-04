@@ -127,7 +127,7 @@ def hr_api() -> Iterator[respx.MockRouter]:
         api.get("/employees", params={"q": "Sneha"}).respond(json=page(SNEHA))
         api.get("/employees", params={"q": "Arun"}).respond(json=page(ARUN))
         api.get("/leave-requests").respond(json=page())
-        api.post(path__regex=r"/leave-requests/.*/approve", name="approve").respond(201, json={})
+        api.post("/tools/approve_leave", name="approve").respond(json={})
         yield api
 
 

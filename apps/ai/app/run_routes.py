@@ -21,7 +21,7 @@ from contextlib import AsyncExitStack
 from typing import Annotated, Any, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -168,6 +168,24 @@ async def start(
     except RateLimited as error:
         raise too_many(error) from error
     return RunView.of(run)
+
+
+class RunList(BaseModel):
+    items: list[RunView]
+
+
+@router.get("", response_model=RunList)
+async def list_runs(
+    request: Request,
+    service: Service,
+    status: Literal["running", "waiting", "completed", "failed", "interrupted"] | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    authorization: Annotated[str | None, Header()] = None,
+) -> RunList:
+    """The signed-in user's runs, newest first; `?status=waiting` is their approval inbox."""
+    caller = await _caller(request, authorization)
+    runs = await service.store.list_for(caller.user.id, status=status, limit=limit)
+    return RunList(items=[RunView.of(run) for run in runs])
 
 
 @router.get("/{run_id}", response_model=RunView)

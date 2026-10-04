@@ -4,7 +4,7 @@ Development only: a transport between the agent and the real HR API that fails c
 requests a set number of times, then lets them through. The spec is a `;`-separated list
 of `METHOD /path-glob=outcome,outcome,...`, used up in order, for example
 
-    POST /leave-requests=500,drop; PATCH /employees/*=403
+    POST /tools/create_leave_request=500,drop; POST /tools/update_employee=403
 
 Outcomes:
   <status>  answer with that status (500, 503, 403, 409, ...) without reaching the API

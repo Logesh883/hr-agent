@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isoDate, paginationQuery, type UserRef } from './common.js';
+import { isoDate, isoDateTime, paginationQuery, userRefSchema, type UserRef } from './common.js';
 import { employeeRefSchema, type EmployeeRef } from './employee.js';
 import { LEAVE_TYPES } from './leave.js';
 
@@ -158,20 +158,21 @@ export const monthlyAttendanceReportSchema = z.object({
 });
 export type MonthlyAttendance = z.infer<typeof monthlyAttendanceReportSchema>;
 
-export interface AttendanceCorrection {
-  id: string;
-  employee: EmployeeRef;
-  date: string;
-  proposed: AttendanceEntry;
+export const attendanceCorrectionSchema = z.object({
+  id: z.uuid(),
+  employee: employeeRefSchema,
+  date: isoDate,
+  proposed: attendanceEntrySchema,
   /** The record before the change (null when there was none). */
-  previous: AttendanceEntry | null;
-  reason: string;
-  status: CorrectionStatus;
-  proposedBy: UserRef;
-  proposedAt: string;
-  reviewedBy: UserRef | null;
-  reviewedAt: string | null;
-  reviewComment: string | null;
+  previous: attendanceEntrySchema.nullable(),
+  reason: z.string(),
+  status: z.enum(CORRECTION_STATUSES),
+  proposedBy: userRefSchema,
+  proposedAt: isoDateTime,
+  reviewedBy: userRefSchema.nullable(),
+  reviewedAt: isoDateTime.nullable(),
+  reviewComment: z.string().nullable(),
   /** HR, not the proposer, and not their own attendance. */
-  canReview: boolean;
-}
+  canReview: z.boolean(),
+});
+export type AttendanceCorrection = z.infer<typeof attendanceCorrectionSchema>;

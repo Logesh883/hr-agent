@@ -10,7 +10,8 @@ uv run hr-ai ingest                    # policies → chunks + embeddings (ai sc
 uv run hr-ai search "Can unused leave carry over?" --mode vector   # retrieval only, no LLM
 uv run hr-ai run "Compare Sneha's and Arun's leave" --login hr@hr.local   # the HR agent graph
 uv run hr-ai run --resume RUN_ID --login hr@hr.local   # continue a stopped or waiting run
-uv run hr-ai run "..." --login hr@hr.local --faults "POST /leave-requests=500,drop"   # A7.5 demo
+# A7.5 demo: inject HR API failures
+uv run hr-ai run "..." --login hr@hr.local --faults "POST /tools/create_leave_request=500,drop"
 """
 
 import argparse
@@ -118,7 +119,7 @@ def main(argv: list[str] | None = None) -> None:
     run.add_argument(
         "--faults",
         metavar="SPEC",
-        help='inject HR API failures (dev only), e.g. "POST /leave-requests=500,drop"; '
+        help='inject HR API failures (dev only), e.g. "POST /tools/create_leave_request=500,drop"; '
         "see app/faults.py",
     )
 

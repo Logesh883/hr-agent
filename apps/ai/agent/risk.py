@@ -1,23 +1,28 @@
 """A6.3: the risk policy. Which writes need a human's approval is decided here, in code,
-from `agent/risk.yaml`, and never by the model or the prompt.
+and never by the model or the prompt.
+
+The policy itself is shared with the HR API (web T4.1): `RISK_POLICY` in `@hr/contracts`
+(packages/contracts/src/tools.ts), exported to `json-schema/risk.json` by
+`pnpm contracts:generate`. The Tool API's catalog shows the same levels.
 
 `assess(tool, arguments)` gives a call's risk level: the tool's level, raised by any field
 with its own level that the call sets (an `update_employee` that changes `status` is
 medium even though the tool is low). `needs_approval(level)` applies the approval rules.
 """
 
+import json
 from functools import cache
 from pathlib import Path
 from typing import Any, Literal, cast
 
-import yaml
 from pydantic import BaseModel
 
+from app.settings import WORKSPACE_ROOT
 from tools.base import Risk, Tool
 
 Level = Literal["low", "medium", "high"]
 LEVELS: tuple[Level, ...] = ("low", "medium", "high")
-POLICY_PATH = Path(__file__).with_name("risk.yaml")
+POLICY_PATH = WORKSPACE_ROOT / "packages" / "contracts" / "json-schema" / "risk.json"
 
 
 class ToolPolicy(BaseModel):
@@ -52,18 +57,16 @@ class RiskPolicy(BaseModel):
 
 
 def _normalise(raw: dict[str, Any]) -> dict[str, Any]:
-    """`tool: medium` is shorthand for `tool: {default: medium}`."""
-    tools = cast(dict[str, Any], raw.get("tools", {}))
-    raw["tools"] = {
-        name: value if isinstance(value, dict) else {"default": value}
-        for name, value in tools.items()
+    """The contract's shape (`approveMedium`) to this one's (`approval` per level)."""
+    return {
+        "approval": {"low": False, "medium": bool(raw["approveMedium"]), "high": True},
+        "default": raw["default"],
+        "tools": raw["tools"],
     }
-    raw["approval"] = {"low": False, "high": True, **raw.get("approval", {})}
-    return raw
 
 
 def load_policy(path: Path = POLICY_PATH) -> RiskPolicy:
-    raw = cast(dict[str, Any], yaml.safe_load(path.read_text(encoding="utf-8")))
+    raw = cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
     return RiskPolicy.model_validate(_normalise(raw))
 
 

@@ -18,6 +18,7 @@ import { PayrollModule } from './payroll/payroll.module.js';
 import { PoliciesModule } from './policies/policies.module.js';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { StorageModule } from './storage/storage.module.js';
+import { ToolsModule } from './tools/tools.module.js';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { StorageModule } from './storage/storage.module.js';
     PayrollModule,
     PoliciesModule,
     AccessModule,
+    ToolsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -5,5 +5,6 @@ import { EmployeesService } from './employees.service.js';
 @Module({
   controllers: [EmployeesController],
   providers: [EmployeesService],
+  exports: [EmployeesService],
 })
 export class EmployeesModule {}

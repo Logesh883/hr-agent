@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     # Seconds to wait on the HR API before giving up.
     hr_api_timeout: float = 10.0
     # Development only (A7.5 demo): HR API failures to inject into agent runs, e.g.
-    # "POST /leave-requests=500,drop". See app/faults.py. Ignored in production.
+    # "POST /tools/create_leave_request=500,drop". See app/faults.py. Ignored in production.
     hr_faults: str = ""
 
     # A8.4 budgets. Per start or resume of an agent run: tokens and seconds (checked between

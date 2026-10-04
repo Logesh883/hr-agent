@@ -127,33 +127,38 @@ async def http() -> AsyncIterator[httpx.AsyncClient]:
 @pytest.fixture
 def hr_api() -> Iterator[respx.MockRouter]:
     with respx.mock(base_url=BASE_URL, assert_all_called=False) as api:
-        api.get("/employees", params={"q": "Priya"}).respond(json=page())
-        api.get("/employees", params={"q": "Rahul"}).respond(json=page(RAHUL))
-        api.get(f"/employees/{RAHUL_ID}").respond(json=RAHUL)
-        api.get("/departments").respond(
-            json=[
-                {
-                    "id": ENG_ID,
-                    "name": "Engineering",
-                    "code": "ENG",
-                    "status": "ACTIVE",
-                    "employeeCount": 9,
-                }
-            ]
-        )
-        api.get(f"/departments/{ENG_ID}").respond(json={"id": ENG_ID, "name": "Engineering"})
-        api.post("/employees").respond(201, json=PRIYA)
-        api.post(f"/employees/{PRIYA_ID}/onboarding").respond(201, json=onboarding())
-        # Read back after each write (A7.2).
-        api.get(f"/employees/{PRIYA_ID}").respond(
-            json=PRIYA
-            | {
-                "department": {"id": ENG_ID, "name": "Engineering"},
-                "manager": ref(RAHUL_ID, "Rahul", "Sharma", "EMP002"),
-            }
-        )
-        api.get(f"/employees/{PRIYA_ID}/onboarding").respond(json=onboarding())
+        mock_hr_api(api)
         yield api
+
+
+def mock_hr_api(api: respx.MockRouter) -> None:
+    """The HR API as the scenario sees it."""
+    api.get("/employees", params={"q": "Priya"}).respond(json=page())
+    api.get("/employees", params={"q": "Rahul"}).respond(json=page(RAHUL))
+    api.get(f"/employees/{RAHUL_ID}").respond(json=RAHUL)
+    api.get("/departments").respond(
+        json=[
+            {
+                "id": ENG_ID,
+                "name": "Engineering",
+                "code": "ENG",
+                "status": "ACTIVE",
+                "employeeCount": 9,
+            }
+        ]
+    )
+    api.get(f"/departments/{ENG_ID}").respond(json={"id": ENG_ID, "name": "Engineering"})
+    api.post("/tools/create_employee").respond(json=PRIYA)
+    api.post("/tools/start_onboarding").respond(json=onboarding())
+    # Read back after each write (A7.2).
+    api.get(f"/employees/{PRIYA_ID}").respond(
+        json=PRIYA
+        | {
+            "department": {"id": ENG_ID, "name": "Engineering"},
+            "manager": ref(RAHUL_ID, "Rahul", "Sharma", "EMP002"),
+        }
+    )
+    api.get(f"/employees/{PRIYA_ID}/onboarding").respond(json=onboarding())
 
 
 def requests(api: respx.MockRouter, method: str, path: str) -> list[httpx.Request]:
@@ -231,19 +236,19 @@ async def test_onboard_priya_with_approval(
         "start_onboarding",
     ]
     # Nothing has been written yet.
-    assert requests(hr_api, "POST", "/employees") == []
+    assert requests(hr_api, "POST", "/tools/create_employee") == []
 
     events = Events()
     done = await resume_run(graph, "priya", {"decision": "approve"}, context(http, llm), events)
 
     assert done.status == "completed"
-    (create,) = requests(hr_api, "POST", "/employees")
+    (create,) = requests(hr_api, "POST", "/tools/create_employee")
     body = json.loads(create.content)
     assert body["lastName"] == "Rao" and body["email"] == "priya.rao@acme.example"
     assert body["departmentId"] == ENG_ID and body["managerId"] == RAHUL_ID
     assert create.headers["idempotency-key"].endswith(":s4")
     assert create.headers["x-agent-run-id"] == "5c0b1f8e-0000-4000-8000-0000000000c1"
-    (start,) = requests(hr_api, "POST", f"/employees/{PRIYA_ID}/onboarding")
+    (start,) = requests(hr_api, "POST", "/tools/start_onboarding")
     assert start.headers["idempotency-key"].endswith(":s5")  # low risk: no approval asked
     results = done.values["results"]
     assert results["s5"]["data"]["missing_info"][0]["message"] == "Phone number is missing"
@@ -252,7 +257,7 @@ async def test_onboard_priya_with_approval(
     # Approving again, quickly, finds nothing waiting: still one employee.
     again = await resume_run(graph, "priya", {"decision": "approve"}, context(http, llm), Events())
     assert again.status == "completed"
-    assert len(requests(hr_api, "POST", "/employees")) == 1
+    assert len(requests(hr_api, "POST", "/tools/create_employee")) == 1
 
 
 async def test_a_rejection_stops_every_write_after_it(
@@ -270,8 +275,8 @@ async def test_a_rejection_stops_every_write_after_it(
     )
 
     assert done.status == "completed"
-    assert requests(hr_api, "POST", "/employees") == []
-    assert requests(hr_api, "POST", f"/employees/{PRIYA_ID}/onboarding") == []
+    assert requests(hr_api, "POST", "/tools/create_employee") == []
+    assert requests(hr_api, "POST", "/tools/start_onboarding") == []
     assert done.values["results"]["s4"]["status"] == "rejected"
     assert "s5" not in done.values["results"]
     assert any("not run: stopped" in f for f in done.values["verification"]["findings"])
@@ -299,7 +304,7 @@ async def test_an_edit_changes_exactly_what_runs(
         Events(),
     )
 
-    (create,) = requests(hr_api, "POST", "/employees")
+    (create,) = requests(hr_api, "POST", "/tools/create_employee")
     assert json.loads(create.content)["jobTitle"] == "Senior Software Engineer"
 
 
@@ -312,7 +317,7 @@ async def test_anything_but_a_clear_yes_is_a_no(
     done = await resume_run(graph, "priya", "hmm, maybe", context(http, llm), Events())
 
     assert done.values["approvals"]["s4"]["decision"] == "rejected"
-    assert requests(hr_api, "POST", "/employees") == []
+    assert requests(hr_api, "POST", "/tools/create_employee") == []
 
 
 async def test_a_write_needing_approval_never_runs_without_one(http: httpx.AsyncClient) -> None:

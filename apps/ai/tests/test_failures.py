@@ -16,6 +16,7 @@ Medium approval is switched off so the failures, not the approvals, are what's t
 """
 
 import json
+import re
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import replace
 from datetime import date
@@ -144,6 +145,7 @@ PREVIEW: dict[str, Any] = {
     "balanceAfter": 7,
     "problems": [],
 }
+EMPLOYEE_TOOLS = r"/tools/(update_employee|change_manager|change_department)"
 STALE = "Employee was changed by someone else. Reload and try again."
 
 
@@ -152,12 +154,13 @@ def error(status: int, message: str, **extra: Any) -> httpx.Response:
 
 
 class SnehaRecord:
-    """Sneha's employee record as the HR API keeps it: PATCH applies the change and bumps
-    the version, GET returns what's stored. Tests make it misbehave."""
+    """Sneha's employee record as the HR API keeps it: an employee tool (update_employee,
+    change_manager, ...) applies the change and bumps the version, GET returns what's stored.
+    Tests make it misbehave."""
 
     def __init__(self) -> None:
         self.record: dict[str, Any] = dict(SNEHA)
-        # Answers to give instead of applying a PATCH, in order (then normal again).
+        # Answers to give instead of applying a change, in order (then normal again).
         self.refusals: list[httpx.Response] = []
         # Set before a refusal: someone else saved meanwhile.
         self.saved_by_someone_else = False
@@ -203,19 +206,19 @@ def hr_api(sneha: SnehaRecord) -> Iterator[respx.MockRouter]:
         api.get("/employees", params={"q": "Sneha"}).respond(json=page(SNEHA))
         api.get("/employees", params={"q": "Arun"}).respond(json=page(ARUN))
         api.post("/leave-requests/preview").respond(json=PREVIEW)
-        api.post("/leave-requests", json__startDate="2026-10-12", name="create_first").respond(
-            201, json=leave()
-        )
-        api.post("/leave-requests", json__startDate="2026-11-02", name="create_second").respond(
-            201, json=SECOND_LEAVE
-        )
+        api.post(
+            "/tools/create_leave_request", json__startDate="2026-10-12", name="create_first"
+        ).respond(200, json=leave())
+        api.post(
+            "/tools/create_leave_request", json__startDate="2026-11-02", name="create_second"
+        ).respond(200, json=SECOND_LEAVE)
         api.get(f"/leave-requests/{LEAVE_ID}", name="read_first").respond(json=leave())
         api.get(f"/leave-requests/{SECOND_LEAVE_ID}").respond(json=SECOND_LEAVE)
-        api.post(f"/leave-requests/{LEAVE_ID}/cancel", name="cancel").respond(
-            201, json=leave("CANCELLED")
+        api.post("/tools/cancel_leave", json__leaveRequestId=LEAVE_ID, name="cancel").respond(
+            200, json=leave("CANCELLED")
         )
         api.get(f"/employees/{SNEHA_ID}").mock(side_effect=sneha.get)
-        api.patch(f"/employees/{SNEHA_ID}").mock(side_effect=sneha.patch)
+        api.post(path__regex=EMPLOYEE_TOOLS).mock(side_effect=sneha.patch)
         yield api
 
 
@@ -242,6 +245,12 @@ def graph() -> HrGraph:
 def sent(api: respx.MockRouter, method: str, path: str) -> list[httpx.Request]:
     calls = cast(list[Call], list(api.calls))
     return [c.request for c in calls if c.request.method == method and c.request.url.path == path]
+
+
+def employee_writes(api: respx.MockRouter) -> list[httpx.Request]:
+    """Every change sent for Sneha's record, whichever employee tool sent it."""
+    calls = cast(list[Call], list(api.calls))
+    return [c.request for c in calls if re.fullmatch(EMPLOYEE_TOOLS, c.request.url.path)]
 
 
 async def run(
@@ -303,7 +312,7 @@ async def test_a_500_is_retried_with_the_same_idempotency_key(
 
     outcome, _ = await run(graph, http, events)
 
-    attempts = sent(hr_api, "POST", "/leave-requests")
+    attempts = sent(hr_api, "POST", "/tools/create_leave_request")
     assert len(attempts) == 4  # three tries at the first leave, then the second
     keys = {r.headers["idempotency-key"] for r in attempts[:3]}
     assert len(keys) == 1  # one key for every try: it can't be booked twice
@@ -391,7 +400,7 @@ async def test_a_403_stops_and_the_leave_this_run_created_is_cancelled(
     results = outcome.values["results"]
     assert results["s3"]["error_kind"] == "forbidden"
     # The first leave request was ours and still pending: safe to cancel, so it is.
-    (cancel,) = sent(hr_api, "POST", f"/leave-requests/{LEAVE_ID}/cancel")
+    (cancel,) = sent(hr_api, "POST", "/tools/cancel_leave")
     assert cancel.headers["idempotency-key"].endswith(":s2:undo")
     assert statuses(outcome) == {"s1": "done", "s2": "compensated", "s3": "failed"}
     assert summary(outcome)["s2"]["detail"] == "cancelled the leave request this run created"
@@ -475,7 +484,7 @@ async def test_a_stale_version_is_re_read_and_retried_once(
 
     outcome, _ = await run(graph, http, scenario="manager")
 
-    first, second, _location = sent(hr_api, "PATCH", f"/employees/{SNEHA_ID}")
+    first, second, _location = employee_writes(hr_api)
     assert json.loads(first.content)["version"] == 1
     assert json.loads(second.content)["version"] == 5
     assert second.headers["idempotency-key"] == first.headers["idempotency-key"] + ":r1"
@@ -489,7 +498,7 @@ async def test_a_second_stale_version_is_reported_not_retried_forever(
 
     outcome, _ = await run(graph, http, scenario="manager")
 
-    assert len(sent(hr_api, "PATCH", f"/employees/{SNEHA_ID}")) == 2  # s4 never sent
+    assert len(employee_writes(hr_api)) == 2  # s4 never sent
     assert outcome.values["results"]["s3"]["error_kind"] == "conflict"
     assert statuses(outcome)["s4"] == "not run"
 
@@ -506,7 +515,7 @@ async def test_a_manager_change_that_didnt_stick_is_a_problem(
     assert s3["verification"]["mismatches"][0].startswith("manager_id is ")
     (problem,) = outcome.values["verification"]["problems"]
     assert problem.startswith("s3 (change_manager) ran but didn't check out")
-    assert len(sent(hr_api, "PATCH", f"/employees/{SNEHA_ID}")) == 1  # the location wasn't
+    assert len(employee_writes(hr_api)) == 1  # the location wasn't
     assert sneha.record["location"] == SNEHA["location"]
 
 
@@ -584,7 +593,7 @@ async def test_a_tool_that_hangs_times_out_as_a_transient_failure(
         return httpx.Response(201)
 
     respx.post(f"{BASE_URL}/leave-requests/preview").respond(json=PREVIEW)
-    respx.post(f"{BASE_URL}/leave-requests").mock(side_effect=hang)
+    respx.post(f"{BASE_URL}/tools/create_leave_request").mock(side_effect=hang)
     create = next(t for t in WRITE_TOOLS if t.name == "create_leave_request")
     registry = ToolRegistry([replace(create, timeout_s=0.05)])
     user = SessionUser.model_validate(session_user("HR_OPS", "Lakshmi Pillai", None))

@@ -366,6 +366,145 @@ class PayrollReportQuery(BaseModel):
     month: Annotated[str, Field(pattern="^\\d{4}-(0[1-9]|1[0-2])$")]
 
 
+class StartRun(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    request: Annotated[str, Field(max_length=4000, min_length=1)]
+
+
+class Answer(RootModel[str]):
+    root: Annotated[str, Field(max_length=2000)]
+
+
+class Comment(RootModel[str]):
+    root: Annotated[str, Field(max_length=500)]
+
+
+class ApprovalDecision(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    decision: Literal["approve", "reject", "edit"]
+    arguments: dict[str, Any] | None = None
+    comment: Comment | None = None
+
+
+class UpdateEmployeeTool(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    employee_id: Annotated[UUID, Field(alias="employeeId", description="The employee to update")]
+    version: Annotated[
+        int,
+        Field(
+            description="The record version you read; a stale one is refused with 409",
+            ge=1,
+            le=9007199254740991,
+        ),
+    ]
+    job_title: Annotated[str | None, Field(alias="jobTitle", max_length=150, min_length=1)] = None
+    location: Annotated[str | None, Field(max_length=100, min_length=1)] = None
+    phone: Phone | None = None
+    employment_type: Annotated[
+        Literal["FULL_TIME", "PART_TIME", "CONTRACT", "INTERN"] | None,
+        Field(alias="employmentType"),
+    ] = None
+    status: Literal["ACTIVE", "PROBATION"] | None = None
+
+
+class ChangeManagerTool(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    employee_id: Annotated[
+        UUID, Field(alias="employeeId", description="The employee whose manager changes")
+    ]
+    version: Annotated[
+        int,
+        Field(
+            description="The record version you read; a stale one is refused with 409",
+            ge=1,
+            le=9007199254740991,
+        ),
+    ]
+    manager_id: Annotated[
+        UUID | None, Field(alias="managerId", description="The new manager; null for none")
+    ]
+
+
+class ChangeDepartmentTool(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    employee_id: Annotated[UUID, Field(alias="employeeId", description="The employee who moves")]
+    version: Annotated[
+        int,
+        Field(
+            description="The record version you read; a stale one is refused with 409",
+            ge=1,
+            le=9007199254740991,
+        ),
+    ]
+    department_id: Annotated[UUID, Field(alias="departmentId", description="The new department")]
+
+
+class StartOnboardingTool(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    employee_id: Annotated[UUID, Field(alias="employeeId", description="The employee to onboard")]
+
+
+class UpdateOnboardingTaskTool(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    status: Literal["PENDING", "DONE", "SKIPPED"] | None = None
+    notes: Annotated[str | None, Field(max_length=1000)] = None
+    due_date: Annotated[date_aliased | None, Field(alias="dueDate")] = None
+    task_id: Annotated[UUID, Field(alias="taskId", description="The onboarding task")]
+
+
+class ApproveLeaveTool(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    comment: Annotated[str | None, Field(max_length=500)] = None
+    leave_request_id: Annotated[
+        UUID, Field(alias="leaveRequestId", description="A pending leave request")
+    ]
+
+
+class RejectLeaveTool(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    reason: Annotated[str, Field(max_length=500, min_length=1)]
+    leave_request_id: Annotated[
+        UUID, Field(alias="leaveRequestId", description="A pending leave request")
+    ]
+
+
+class CancelLeaveTool(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    leave_request_id: Annotated[
+        UUID, Field(alias="leaveRequestId", description="A pending leave request")
+    ]
+
+
+class ApplyCorrectionTool(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    comment: Annotated[str | None, Field(max_length=500)] = None
+    correction_id: Annotated[
+        UUID, Field(alias="correctionId", description="A pending attendance correction")
+    ]
+
+
 class UserRef(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -621,6 +760,25 @@ class MonthlyAttendance(BaseModel):
     days: list[AttendanceDay] | None = None
 
 
+class AttendanceCorrection(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    id: UUID
+    employee: EmployeeRef
+    date: date_aliased
+    proposed: AttendanceEntry
+    previous: AttendanceEntry | None
+    reason: str
+    status: Literal["PENDING", "APPROVED", "REJECTED"]
+    proposed_by: Annotated[UserRef, Field(alias="proposedBy")]
+    proposed_at: Annotated[AwareDatetime, Field(alias="proposedAt")]
+    reviewed_by: Annotated[UserRef | None, Field(alias="reviewedBy")]
+    reviewed_at: Annotated[AwareDatetime | None, Field(alias="reviewedAt")]
+    review_comment: Annotated[str | None, Field(alias="reviewComment")]
+    can_review: Annotated[bool, Field(alias="canReview")]
+
+
 class OnboardingTask(BaseModel):
     model_config = ConfigDict(
         populate_by_name=True,
@@ -834,3 +992,399 @@ class Policy(BaseModel):
     ]
     current: PolicyVersion | None
     versions: list[PolicyVersion]
+
+
+class RunQuestion1(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    type: Literal["clarification"]
+    question: str
+
+
+class RunQuestion2(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    type: Literal["value"]
+    question: str
+    step: str
+    argument: str
+    error: str | None = None
+
+
+class RunQuestion3(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    type: Literal["choice"]
+    question: str
+    options: list[str]
+
+
+class PlanItem(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    id: str
+    tool: str
+    reason: str | None = None
+
+
+class RunQuestion4(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    type: Literal["approval"]
+    question: str
+    step: str
+    tool: str
+    risk: Literal["low", "medium", "high"]
+    reason: str | None = None
+    summary: str | None = None
+    before: dict[str, Any] | None = None
+    after: dict[str, Any] | None = None
+    problems: list[str] | None = []
+    arguments: dict[str, Any]
+    plan: list[PlanItem]
+    policy: list[str] | None = []
+    error: str | None = None
+
+
+class RunQuestion(RootModel[RunQuestion1 | RunQuestion2 | RunQuestion3 | RunQuestion4]):
+    root: Annotated[
+        RunQuestion1 | RunQuestion2 | RunQuestion3 | RunQuestion4, Field(title="RunQuestion")
+    ]
+
+
+class RunStep(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    id: str
+    tool: str
+    reason: str | None = None
+    status: str
+    error: str | None = None
+    result: str | None = None
+
+
+class PolicyPassage(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    citation: str
+    text: str
+    warning: str | None = None
+
+
+class RunApproval(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    step: str
+    tool: str
+    decision: Literal["approved", "rejected", "edited"]
+    risk: str
+    comment: str | None = None
+
+
+class CompletionLine(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    step: str
+    tool: str
+    status: str | None = None
+    detail: str | None = None
+
+
+class Clarification(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    question: str
+    answer: str
+
+
+class Plan(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    goal: str | None = None
+    steps: list[RunStep]
+
+
+class Verification(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    ok: bool
+    problems: list[str]
+    findings: list[str]
+
+
+class RunProgress(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    intent: str | None = None
+    route: str | None = None
+    clarifications: Annotated[list[Clarification] | None, Field(validate_default=True)] = []
+    policy: list[str] | None = []
+    passages: Annotated[list[PolicyPassage] | None, Field(validate_default=True)] = []
+    plan: Plan | None = None
+    verification: Verification | None = None
+    summary: Annotated[list[CompletionLine] | None, Field(validate_default=True)] = []
+    approvals: Annotated[list[RunApproval] | None, Field(validate_default=True)] = []
+
+
+class RunView(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    id: UUID
+    status: Literal["running", "waiting", "completed", "failed", "interrupted"]
+    request: str
+    workflow_type: str | None = None
+    question: RunQuestion | None = None
+    answer: str | None = None
+    error: str | None = None
+    trace_ids: list[str]
+    started_at: str
+    updated_at: str
+    completed_at: str | None = None
+    progress: RunProgress | None = None
+
+
+class RunList(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    items: list[RunView]
+
+
+class RunEvent1(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        populate_by_name=True,
+    )
+    __annotations__ = {
+        "__pydantic_extra__": dict[str, Any],
+    }
+    event: Literal["run_started"]
+    request: str
+
+
+class RunEvent2(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        populate_by_name=True,
+    )
+    __annotations__ = {
+        "__pydantic_extra__": dict[str, Any],
+    }
+    event: Literal["run_resumed"]
+    answer: Any
+
+
+class RunEvent3(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        populate_by_name=True,
+    )
+    __annotations__ = {
+        "__pydantic_extra__": dict[str, Any],
+    }
+    event: Literal["node_started"]
+    node: str
+
+
+class RunEvent4(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        populate_by_name=True,
+    )
+    __annotations__ = {
+        "__pydantic_extra__": dict[str, Any],
+    }
+    event: Literal["node_finished"]
+    node: str
+    summary: dict[str, Any]
+
+
+class RunEvent5(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        populate_by_name=True,
+    )
+    __annotations__ = {
+        "__pydantic_extra__": dict[str, Any],
+    }
+    event: Literal["tool_started"]
+    tool: str
+    step: str
+    attempt: float | None = None
+
+
+class RunEvent6(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        populate_by_name=True,
+    )
+    __annotations__ = {
+        "__pydantic_extra__": dict[str, Any],
+    }
+    event: Literal["tool_finished"]
+    tool: str
+    step: str
+    ok: bool
+
+
+class RunEvent7(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        populate_by_name=True,
+    )
+    __annotations__ = {
+        "__pydantic_extra__": dict[str, Any],
+    }
+    event: Literal["tool_retry"]
+    step: str
+    after_s: float
+    error: str | None = None
+
+
+class RunEvent8(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        populate_by_name=True,
+    )
+    __annotations__ = {
+        "__pydantic_extra__": dict[str, Any],
+    }
+    event: Literal["verified"]
+    step: str
+    ok: bool
+    mismatches: list[str]
+
+
+class RunEvent9(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        populate_by_name=True,
+    )
+    __annotations__ = {
+        "__pydantic_extra__": dict[str, Any],
+    }
+    event: Literal["compensated"]
+    step: str
+    note: str
+
+
+class RunEvent10(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        populate_by_name=True,
+    )
+    __annotations__ = {
+        "__pydantic_extra__": dict[str, Any],
+    }
+    event: Literal["approval_decided"]
+    step: str
+    tool: str
+    decision: str
+
+
+class RunEvent11(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        populate_by_name=True,
+    )
+    __annotations__ = {
+        "__pydantic_extra__": dict[str, Any],
+    }
+    event: Literal["waiting"]
+    type: str
+    question: str
+
+
+class RunEvent12(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        populate_by_name=True,
+    )
+    __annotations__ = {
+        "__pydantic_extra__": dict[str, Any],
+    }
+    event: Literal["budget_exceeded"]
+    reason: str
+
+
+class RunEvent13(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        populate_by_name=True,
+    )
+    __annotations__ = {
+        "__pydantic_extra__": dict[str, Any],
+    }
+    event: Literal["finished"]
+    status: str | None = None
+    answer: str | None = None
+
+
+class RunEvent14(BaseModel):
+    model_config = ConfigDict(
+        extra="allow",
+        populate_by_name=True,
+    )
+    __annotations__ = {
+        "__pydantic_extra__": dict[str, Any],
+    }
+    event: Literal["failed"]
+    error: str
+
+
+class RunEvent(
+    RootModel[
+        RunEvent1
+        | RunEvent2
+        | RunEvent3
+        | RunEvent4
+        | RunEvent5
+        | RunEvent6
+        | RunEvent7
+        | RunEvent8
+        | RunEvent9
+        | RunEvent10
+        | RunEvent11
+        | RunEvent12
+        | RunEvent13
+        | RunEvent14
+    ]
+):
+    root: Annotated[
+        RunEvent1
+        | RunEvent2
+        | RunEvent3
+        | RunEvent4
+        | RunEvent5
+        | RunEvent6
+        | RunEvent7
+        | RunEvent8
+        | RunEvent9
+        | RunEvent10
+        | RunEvent11
+        | RunEvent12
+        | RunEvent13
+        | RunEvent14,
+        Field(title="RunEvent"),
+    ]
+
+
+class ResumeRun(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    answer: Answer | ApprovalDecision | None = None

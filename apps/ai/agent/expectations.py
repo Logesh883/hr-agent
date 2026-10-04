@@ -172,7 +172,8 @@ async def _cancel_created_leave(ctx: ToolContext, result: dict[str, Any]) -> str
         # Someone already acted on it: no longer ours to undo.
         raise RuntimeError(f"left as is: it's {leave.status.lower()} now")
     await ctx.hr.post(
-        f"/leave-requests/{leave.id}/cancel",
+        "/tools/cancel_leave",
+        {"leaveRequestId": str(leave.id)},
         idempotency_key=ctx.idempotency_key and f"{ctx.idempotency_key}:undo",
     )
     return "cancelled the leave request this run created"

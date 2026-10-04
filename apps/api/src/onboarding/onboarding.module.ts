@@ -7,5 +7,6 @@ import { OnboardingService } from './onboarding.service.js';
   imports: [DocumentsModule],
   controllers: [OnboardingController],
   providers: [OnboardingService],
+  exports: [OnboardingService],
 })
 export class OnboardingModule {}

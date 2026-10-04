@@ -104,17 +104,17 @@ Built as vertical slices (API + tests + UI), in the order leave → documents �
 - [x] App access: HR/admin give employees a login (work email + one-time temporary password), change role, reset password, turn access off; forced password change at first sign-in enforced by the API; password changes/resets end older sessions; archiving turns the login off; login email follows the work email; only admins manage admin logins; nobody manages their own access
 - [x] E2E tests use their own `hr_test` database and storage folder (migrate + seed before each run) instead of the dev database
 
-## Phase 3 — Tool API (Contract with the AI Agent)
+## Phase 3 — Tool API (Contract with the AI Agent) ✅
 
-- [ ] T3.1 Define all 13 tool schemas (input/output) in `packages/contracts`
-- [ ] T3.2 Export contracts as JSON Schema / OpenAPI for the Python agent
-- [ ] T3.3 `POST /tools/:toolName` endpoints mapped to existing services
-- [ ] T3.4 Service-to-service auth: agent acts *on behalf of* a user (user's RBAC applies)
-- [ ] T3.5 Idempotency keys (`Idempotency-Key` header + stored results)
-- [ ] T3.6 `actorType = AI` recorded in audit for tool calls
-- [ ] T3.7 Contract tests: valid input passes, invalid input rejected, unauthorized call fails
+- [x] T3.1 Tool schemas (input/output) in `packages/contracts/src/tools.ts`: 14 tools. Of README §4's 13, `upload_document` stays the multipart `POST /employees/:id/documents`, `send_email` is the AI service's outbox stub, and `generate_document` waits for document AI (M9); `reject_leave`, `cancel_leave`, `start_onboarding` and `update_onboarding_task` are added because the agent needs them
+- [x] T3.2 Exported as JSON Schema (`json-schema/api.json`) and Pydantic models for the agent (`pnpm contracts:generate`); `GET /tools` serves each tool's input/output JSON Schema
+- [x] T3.3 `GET /tools` (catalog: schemas, permission, risk, whether the caller may use it) and `POST /tools/:toolName`, each tool mapped to the same service method as its REST endpoint. The agent's write tools now call these, so every AI mutation goes through a typed tool endpoint; reads stay on REST
+- [x] T3.4 On behalf of a user: the agent forwards the signed-in user's token, so their role and data scope apply (no service account)
+- [x] T3.5 `Idempotency-Key` (A6.1's interceptor) applies to `/tools/*` like any write
+- [x] T3.6 Audit: `actorType = AI` + `agentRunId` (A6.1), and now `toolName` on every change made through the Tool API
+- [x] T3.7 Contract tests (`apps/api/test/tools.e2e-spec.ts`): catalog, valid input runs and matches the output schema, invalid input → 400 with issues, wrong role → 403, unknown tool → 404, locking, idempotency, audit; plus a live agent-side test (`apps/ai/tests/test_integration_hr_api.py`)
 
-**Exit:** every tool in README §4 can be called over HTTP with a schema-checked request, and RBAC and audit apply to it.
+**Exit:** met. Every tool can be called over HTTP with a schema-checked request; RBAC, idempotency and audit apply.
 
 ## Phase 4 — Approvals, Audit & Command Center UI
 

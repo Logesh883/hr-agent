@@ -7,7 +7,7 @@ import type {
 } from '@hr/contracts';
 import type { Prisma } from '@hr/db';
 import type { AuthUser } from '../auth/auth.types.js';
-import { currentAgentRunId } from '../common/agent-context.js';
+import { currentAgentRunId, currentToolName } from '../common/agent-context.js';
 import { PrismaService, type Tx } from '../prisma/prisma.service.js';
 
 type Snapshot = Record<string, unknown>;
@@ -37,6 +37,7 @@ export class AuditService {
         actorType: agentRunId ? 'AI' : 'USER',
         actorId: event.actor.id,
         agentRunId,
+        toolName: currentToolName(),
         action: event.action,
         entityType: event.entityType,
         entityId: event.entityId,
@@ -78,6 +79,7 @@ export class AuditService {
         actorType: r.actorType,
         actorId: r.actorId,
         agentRunId: r.agentRunId,
+        toolName: r.toolName,
         actorName: r.actorId ? (actorNames.get(r.actorId) ?? null) : null,
         action: r.action,
         entityType: r.entityType as AuditEntityType,

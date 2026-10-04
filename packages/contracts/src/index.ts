@@ -1,4 +1,5 @@
 export * from './access.js';
+export * from './agent.js';
 export * from './attendance.js';
 export * from './audit.js';
 export * from './auth.js';
@@ -11,3 +12,4 @@ export * from './onboarding.js';
 export * from './payroll.js';
 export * from './permissions.js';
 export * from './policy.js';
+export * from './tools.js';

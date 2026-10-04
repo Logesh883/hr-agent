@@ -100,6 +100,9 @@ class RunRecord(BaseModel):
 class RunStore(Protocol):
     async def create(self, run: RunRecord) -> None: ...
     async def get(self, run_id: str) -> RunRecord | None: ...
+    async def list_for(
+        self, user_id: str, *, status: str | None = None, limit: int = 20
+    ) -> list[RunRecord]: ...
     async def update(self, run_id: str, **fields: Any) -> None: ...
     async def add_event(self, run_id: str, event: dict[str, Any]) -> int: ...
     async def events(self, run_id: str, *, after: int = 0) -> list[tuple[int, dict[str, Any]]]: ...
@@ -199,6 +202,17 @@ class PostgresRunStore:
             )
         return RunRecord.model_validate(dict(row)) if row else None
 
+    async def list_for(
+        self, user_id: str, *, status: str | None = None, limit: int = 20
+    ) -> list[RunRecord]:
+        query = select(workflow_run).where(workflow_run.c.user_id == user_id)
+        if status:
+            query = query.where(workflow_run.c.status == status)
+        query = query.order_by(workflow_run.c.started_at.desc()).limit(limit)
+        async with self.engine.connect() as conn:
+            rows = (await conn.execute(query)).mappings().all()
+        return [RunRecord.model_validate(dict(row)) for row in rows]
+
     async def update(self, run_id: str, **fields: Any) -> None:
         fields["updated_at"] = datetime.now(UTC)
         async with self.engine.begin() as conn:
@@ -270,6 +284,16 @@ class MemoryRunStore:
         run = self.runs.get(run_id)
         return run.model_copy(deep=True) if run else None
 
+    async def list_for(
+        self, user_id: str, *, status: str | None = None, limit: int = 20
+    ) -> list[RunRecord]:
+        runs = [
+            r.model_copy(deep=True)
+            for r in self.runs.values()
+            if r.user_id == user_id and (status is None or r.status == status)
+        ]
+        return sorted(runs, key=lambda r: r.started_at, reverse=True)[:limit]
+
     async def update(self, run_id: str, **fields: Any) -> None:
         run = self.runs[run_id]
         self.runs[run_id] = run.model_copy(update=fields | {"updated_at": datetime.now(UTC)})
@@ -305,6 +329,17 @@ def _jsonable[T](value: T) -> T:
     return json.loads(json.dumps(value, default=str))
 
 
+RESULT_PREVIEW_CHARS = 1200
+
+
+def _short_result(record: dict[str, Any]) -> str | None:
+    data = record.get("data")
+    if data is None:
+        return None
+    text = json.dumps(data, ensure_ascii=False, default=str)
+    return text if len(text) <= RESULT_PREVIEW_CHARS else text[:RESULT_PREVIEW_CHARS] + "…"
+
+
 def summarize_state(values: dict[str, Any]) -> dict[str, Any]:
     """The parts of a checkpoint worth showing in GET /agent/runs/:id."""
     plan: dict[str, Any] = values.get("plan") or {}
@@ -324,6 +359,7 @@ def summarize_state(values: dict[str, Any]) -> dict[str, Any]:
                     "reason": s.get("reason"),
                     "status": results.get(s["id"], {}).get("status", "pending"),
                     "error": results.get(s["id"], {}).get("error"),
+                    "result": _short_result(results.get(s["id"], {})),
                 }
                 for s in steps
             ],
@@ -331,6 +367,23 @@ def summarize_state(values: dict[str, Any]) -> dict[str, Any]:
         if plan
         else None,
         "verification": values.get("verification"),
+        # The evidence behind the answer (A12.1): passages as the model saw them, and each
+        # step's result, shortened.
+        "passages": [
+            {"citation": p["citation"], "text": p.get("text", ""), "warning": p.get("warning")}
+            for p in values.get("policy", [])
+        ],
+        "summary": values.get("summary") or [],
+        "approvals": [
+            {
+                "step": step_id,
+                "tool": a.get("tool"),
+                "decision": a.get("decision"),
+                "risk": a.get("risk"),
+                "comment": a.get("comment"),
+            }
+            for step_id, a in cast(dict[str, dict[str, Any]], values.get("approvals") or {}).items()
+        ],
     }
 
 

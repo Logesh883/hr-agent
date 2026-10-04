@@ -7,7 +7,8 @@
  * enforces (leave entitlements, attendance cutoffs), so the AI service can check
  * that policy documents agree with them (A4.6), and json-schema/permissions.json:
  * the role → permission map, which the AI service's tool allow-list is tested
- * against (A8.1).
+ * against (A8.1), and json-schema/risk.json: which writes need a person's approval
+ * (T4.1), which the agent's approval gate loads.
  *
  * Every schema goes into one Zod registry, so a shape used in several places
  * (EmployeeRef, UserRef, …) becomes a single `$defs` entry referenced with
@@ -51,6 +52,19 @@ const requests = {
   UpdateOnboardingTask: contracts.updateOnboardingTaskSchema,
   OnboardingSearchQuery: contracts.onboardingSearchSchema,
   PayrollReportQuery: contracts.payrollReportSchema,
+  StartRun: contracts.startRunSchema,
+  ResumeRun: contracts.resumeRunSchema,
+  ApprovalDecision: contracts.approvalDecisionSchema,
+  // T3.1: Tool API inputs that aren't already an endpoint's body above.
+  UpdateEmployeeTool: contracts.updateEmployeeToolSchema,
+  ChangeManagerTool: contracts.changeManagerToolSchema,
+  ChangeDepartmentTool: contracts.changeDepartmentToolSchema,
+  StartOnboardingTool: contracts.startOnboardingToolSchema,
+  UpdateOnboardingTaskTool: contracts.updateOnboardingTaskToolSchema,
+  ApproveLeaveTool: contracts.approveLeaveToolSchema,
+  RejectLeaveTool: contracts.rejectLeaveToolSchema,
+  CancelLeaveTool: contracts.cancelLeaveToolSchema,
+  ApplyCorrectionTool: contracts.applyCorrectionToolSchema,
 };
 
 /** Response bodies the AI service reads, and the shared shapes inside them. */
@@ -69,6 +83,7 @@ const responses = {
   AttendanceDay: contracts.attendanceDaySchema,
   MonthlyAttendanceRow: contracts.monthlyAttendanceRowSchema,
   MonthlyAttendance: contracts.monthlyAttendanceReportSchema,
+  AttendanceCorrection: contracts.attendanceCorrectionSchema,
   OnboardingTask: contracts.onboardingTaskSchema,
   OnboardingProgress: contracts.onboardingProgressSchema,
   MissingInfo: contracts.missingInfoSchema,
@@ -80,6 +95,15 @@ const responses = {
   PayrollReport: contracts.payrollReportResponseSchema,
   PolicyVersion: contracts.policyVersionSchema,
   Policy: contracts.policySchema,
+  RunQuestion: contracts.runQuestionSchema,
+  RunStep: contracts.runStepSchema,
+  PolicyPassage: contracts.policyPassageSchema,
+  RunApproval: contracts.runApprovalSchema,
+  CompletionLine: contracts.completionLineSchema,
+  RunProgress: contracts.runProgressSchema,
+  RunView: contracts.runViewSchema,
+  RunList: contracts.runListSchema,
+  RunEvent: contracts.runEventSchema,
 };
 
 const registry = z.registry();
@@ -136,6 +160,12 @@ const permissions = {
 await writeFile(
   join(dirname(outputPath), 'permissions.json'),
   `${JSON.stringify(permissions, null, 2)}\n`,
+);
+
+// T4.1: the risk policy the agent's approval gate enforces.
+await writeFile(
+  join(dirname(outputPath), 'risk.json'),
+  `${JSON.stringify(contracts.RISK_POLICY, null, 2)}\n`,
 );
 
 console.log(

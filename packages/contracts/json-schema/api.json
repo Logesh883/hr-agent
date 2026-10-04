@@ -903,6 +903,319 @@
         "month"
       ]
     },
+    "StartRun": {
+      "title": "StartRun",
+      "type": "object",
+      "properties": {
+        "request": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 4000
+        }
+      },
+      "required": [
+        "request"
+      ]
+    },
+    "ResumeRun": {
+      "title": "ResumeRun",
+      "type": "object",
+      "properties": {
+        "answer": {
+          "anyOf": [
+            {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "$ref": "#/$defs/ApprovalDecision"
+                }
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
+    },
+    "ApprovalDecision": {
+      "title": "ApprovalDecision",
+      "type": "object",
+      "properties": {
+        "decision": {
+          "type": "string",
+          "enum": [
+            "approve",
+            "reject",
+            "edit"
+          ]
+        },
+        "arguments": {
+          "anyOf": [
+            {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "comment": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 500
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "decision"
+      ]
+    },
+    "UpdateEmployeeTool": {
+      "title": "UpdateEmployeeTool",
+      "type": "object",
+      "properties": {
+        "employeeId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "The employee to update"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "The record version you read; a stale one is refused with 409"
+        },
+        "jobTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 150
+        },
+        "location": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "phone": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 50
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "employmentType": {
+          "type": "string",
+          "enum": [
+            "FULL_TIME",
+            "PART_TIME",
+            "CONTRACT",
+            "INTERN"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ACTIVE",
+            "PROBATION"
+          ]
+        }
+      },
+      "required": [
+        "employeeId",
+        "version"
+      ]
+    },
+    "ChangeManagerTool": {
+      "title": "ChangeManagerTool",
+      "type": "object",
+      "properties": {
+        "employeeId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "The employee whose manager changes"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "The record version you read; a stale one is refused with 409"
+        },
+        "managerId": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "uuid"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The new manager; null for none"
+        }
+      },
+      "required": [
+        "employeeId",
+        "version",
+        "managerId"
+      ]
+    },
+    "ChangeDepartmentTool": {
+      "title": "ChangeDepartmentTool",
+      "type": "object",
+      "properties": {
+        "employeeId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "The employee who moves"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991,
+          "description": "The record version you read; a stale one is refused with 409"
+        },
+        "departmentId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "The new department"
+        }
+      },
+      "required": [
+        "employeeId",
+        "version",
+        "departmentId"
+      ]
+    },
+    "StartOnboardingTool": {
+      "title": "StartOnboardingTool",
+      "type": "object",
+      "properties": {
+        "employeeId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "The employee to onboard"
+        }
+      },
+      "required": [
+        "employeeId"
+      ]
+    },
+    "UpdateOnboardingTaskTool": {
+      "title": "UpdateOnboardingTaskTool",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "PENDING",
+            "DONE",
+            "SKIPPED"
+          ]
+        },
+        "notes": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "dueDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "taskId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "The onboarding task"
+        }
+      },
+      "required": [
+        "taskId"
+      ]
+    },
+    "ApproveLeaveTool": {
+      "title": "ApproveLeaveTool",
+      "type": "object",
+      "properties": {
+        "comment": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "leaveRequestId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "A pending leave request"
+        }
+      },
+      "required": [
+        "leaveRequestId"
+      ]
+    },
+    "RejectLeaveTool": {
+      "title": "RejectLeaveTool",
+      "type": "object",
+      "properties": {
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "leaveRequestId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "A pending leave request"
+        }
+      },
+      "required": [
+        "reason",
+        "leaveRequestId"
+      ]
+    },
+    "CancelLeaveTool": {
+      "title": "CancelLeaveTool",
+      "type": "object",
+      "properties": {
+        "leaveRequestId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "A pending leave request"
+        }
+      },
+      "required": [
+        "leaveRequestId"
+      ]
+    },
+    "ApplyCorrectionTool": {
+      "title": "ApplyCorrectionTool",
+      "type": "object",
+      "properties": {
+        "comment": {
+          "type": "string",
+          "maxLength": 500
+        },
+        "correctionId": {
+          "type": "string",
+          "format": "uuid",
+          "description": "A pending attendance correction"
+        }
+      },
+      "required": [
+        "correctionId"
+      ]
+    },
     "UserRef": {
       "title": "UserRef",
       "type": "object",
@@ -1684,6 +1997,99 @@
         "anomalies"
       ]
     },
+    "AttendanceCorrection": {
+      "title": "AttendanceCorrection",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "employee": {
+          "$ref": "#/$defs/EmployeeRef"
+        },
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "proposed": {
+          "$ref": "#/$defs/AttendanceEntry"
+        },
+        "previous": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AttendanceEntry"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PENDING",
+            "APPROVED",
+            "REJECTED"
+          ]
+        },
+        "proposedBy": {
+          "$ref": "#/$defs/UserRef"
+        },
+        "proposedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reviewedBy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UserRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reviewedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reviewComment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "canReview": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "employee",
+        "date",
+        "proposed",
+        "previous",
+        "reason",
+        "status",
+        "proposedBy",
+        "proposedAt",
+        "reviewedBy",
+        "reviewedAt",
+        "reviewComment",
+        "canReview"
+      ]
+    },
     "OnboardingTask": {
       "title": "OnboardingTask",
       "type": "object",
@@ -2342,6 +2748,864 @@
         "category",
         "current",
         "versions"
+      ]
+    },
+    "RunQuestion": {
+      "title": "RunQuestion",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "clarification"
+            },
+            "question": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "question"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "value"
+            },
+            "question": {
+              "type": "string"
+            },
+            "step": {
+              "type": "string"
+            },
+            "argument": {
+              "type": "string"
+            },
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "question",
+            "step",
+            "argument"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "choice"
+            },
+            "question": {
+              "type": "string"
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "type",
+            "question",
+            "options"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "const": "approval"
+            },
+            "question": {
+              "type": "string"
+            },
+            "step": {
+              "type": "string"
+            },
+            "tool": {
+              "type": "string"
+            },
+            "risk": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ]
+            },
+            "reason": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "summary": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "before": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "after": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "propertyNames": {
+                    "type": "string"
+                  },
+                  "additionalProperties": {}
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "problems": {
+              "default": [],
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "arguments": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            },
+            "plan": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "tool": {
+                    "type": "string"
+                  },
+                  "reason": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "tool"
+                ]
+              }
+            },
+            "policy": {
+              "default": [],
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "type",
+            "question",
+            "step",
+            "tool",
+            "risk",
+            "arguments",
+            "plan"
+          ]
+        }
+      ]
+    },
+    "RunStep": {
+      "title": "RunStep",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string"
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "result": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "tool",
+        "status"
+      ]
+    },
+    "PolicyPassage": {
+      "title": "PolicyPassage",
+      "type": "object",
+      "properties": {
+        "citation": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "warning": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "citation",
+        "text"
+      ]
+    },
+    "RunApproval": {
+      "title": "RunApproval",
+      "type": "object",
+      "properties": {
+        "step": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "decision": {
+          "type": "string",
+          "enum": [
+            "approved",
+            "rejected",
+            "edited"
+          ]
+        },
+        "risk": {
+          "type": "string"
+        },
+        "comment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "step",
+        "tool",
+        "decision",
+        "risk"
+      ]
+    },
+    "CompletionLine": {
+      "title": "CompletionLine",
+      "type": "object",
+      "properties": {
+        "step": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        },
+        "status": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "detail": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "step",
+        "tool"
+      ]
+    },
+    "RunProgress": {
+      "title": "RunProgress",
+      "type": "object",
+      "properties": {
+        "intent": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "route": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "clarifications": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "question": {
+                "type": "string"
+              },
+              "answer": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "question",
+              "answer"
+            ]
+          }
+        },
+        "policy": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "passages": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PolicyPassage"
+          }
+        },
+        "plan": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "goal": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "steps": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/$defs/RunStep"
+                  }
+                }
+              },
+              "required": [
+                "steps"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "verification": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "ok": {
+                  "type": "boolean"
+                },
+                "problems": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "findings": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "ok",
+                "problems",
+                "findings"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CompletionLine"
+          }
+        },
+        "approvals": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RunApproval"
+          }
+        }
+      }
+    },
+    "RunView": {
+      "title": "RunView",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "running",
+            "waiting",
+            "completed",
+            "failed",
+            "interrupted"
+          ]
+        },
+        "request": {
+          "type": "string"
+        },
+        "workflow_type": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "question": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunQuestion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "answer": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "error": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "trace_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "started_at": {
+          "type": "string"
+        },
+        "updated_at": {
+          "type": "string"
+        },
+        "completed_at": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "progress": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunProgress"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "status",
+        "request",
+        "trace_ids",
+        "started_at",
+        "updated_at"
+      ]
+    },
+    "RunList": {
+      "title": "RunList",
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/RunView"
+          }
+        }
+      },
+      "required": [
+        "items"
+      ]
+    },
+    "RunEvent": {
+      "title": "RunEvent",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "run_started"
+            },
+            "request": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "event",
+            "request"
+          ],
+          "additionalProperties": {}
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "run_resumed"
+            },
+            "answer": {}
+          },
+          "required": [
+            "event",
+            "answer"
+          ],
+          "additionalProperties": {}
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "node_started"
+            },
+            "node": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "event",
+            "node"
+          ],
+          "additionalProperties": {}
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "node_finished"
+            },
+            "node": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string"
+              },
+              "additionalProperties": {}
+            }
+          },
+          "required": [
+            "event",
+            "node",
+            "summary"
+          ],
+          "additionalProperties": {}
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "tool_started"
+            },
+            "tool": {
+              "type": "string"
+            },
+            "step": {
+              "type": "string"
+            },
+            "attempt": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "event",
+            "tool",
+            "step"
+          ],
+          "additionalProperties": {}
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "tool_finished"
+            },
+            "tool": {
+              "type": "string"
+            },
+            "step": {
+              "type": "string"
+            },
+            "ok": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "event",
+            "tool",
+            "step",
+            "ok"
+          ],
+          "additionalProperties": {}
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "tool_retry"
+            },
+            "step": {
+              "type": "string"
+            },
+            "after_s": {
+              "type": "number"
+            },
+            "error": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "event",
+            "step",
+            "after_s"
+          ],
+          "additionalProperties": {}
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "verified"
+            },
+            "step": {
+              "type": "string"
+            },
+            "ok": {
+              "type": "boolean"
+            },
+            "mismatches": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "event",
+            "step",
+            "ok",
+            "mismatches"
+          ],
+          "additionalProperties": {}
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "compensated"
+            },
+            "step": {
+              "type": "string"
+            },
+            "note": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "event",
+            "step",
+            "note"
+          ],
+          "additionalProperties": {}
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "approval_decided"
+            },
+            "step": {
+              "type": "string"
+            },
+            "tool": {
+              "type": "string"
+            },
+            "decision": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "event",
+            "step",
+            "tool",
+            "decision"
+          ],
+          "additionalProperties": {}
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "waiting"
+            },
+            "type": {
+              "type": "string"
+            },
+            "question": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "event",
+            "type",
+            "question"
+          ],
+          "additionalProperties": {}
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "budget_exceeded"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "event",
+            "reason"
+          ],
+          "additionalProperties": {}
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "finished"
+            },
+            "status": {
+              "type": [
+                "string",
+                "null"
+              ]
+            },
+            "answer": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "event"
+          ],
+          "additionalProperties": {}
+        },
+        {
+          "type": "object",
+          "properties": {
+            "event": {
+              "type": "string",
+              "const": "failed"
+            },
+            "error": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "event",
+            "error"
+          ],
+          "additionalProperties": {}
+        }
       ]
     }
   }

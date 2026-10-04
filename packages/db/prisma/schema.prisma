@@ -209,6 +209,8 @@ model AuditLog {
   actorId    String?   @db.Uuid
   /// The agent run that made the change (ai.workflow_run.id), for AI entries.
   agentRunId String?   @db.Uuid
+  /// The Tool API tool that made the change (POST /tools/:name), if any.
+  toolName   String?
   action     String
   entityType String
   entityId   String    @db.Uuid

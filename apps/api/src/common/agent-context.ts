@@ -10,6 +10,8 @@ import type { NextFunction, Request, Response } from 'express';
  */
 interface AgentContext {
   agentRunId: string | null;
+  /** Set by the Tool API (POST /tools/:name) for the tool being run. */
+  toolName: string | null;
 }
 
 const storage = new AsyncLocalStorage<AgentContext>();
@@ -20,6 +22,17 @@ export function currentAgentRunId(): string | null {
   return storage.getStore()?.agentRunId ?? null;
 }
 
+/** The Tool API tool behind the current request, if any. */
+export function currentToolName(): string | null {
+  return storage.getStore()?.toolName ?? null;
+}
+
+/** Labels the rest of this request as a run of `name` (audit entries record it). */
+export function setCurrentToolName(name: string): void {
+  const store = storage.getStore();
+  if (store) store.toolName = name;
+}
+
 @Injectable()
 export class AgentContextMiddleware implements NestMiddleware {
   use(req: Request, _res: Response, next: NextFunction): void {
@@ -27,6 +40,6 @@ export class AgentContextMiddleware implements NestMiddleware {
     // A malformed id is ignored rather than refused: it's a label, not a credential.
     const agentRunId =
       header && UUID.test(header) ? header.toLowerCase() : null;
-    storage.run({ agentRunId }, next);
+    storage.run({ agentRunId, toolName: null }, next);
   }
 }

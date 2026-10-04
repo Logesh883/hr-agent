@@ -135,7 +135,7 @@ async def run(ctx: ToolContext, name: str, arguments: dict[str, Any]) -> ToolRes
 @respx.mock
 async def test_create_employee_sends_the_idempotency_key_and_run_id(ctx: ToolContext) -> None:
     created = SNEHA | {"firstName": "Priya", "lastName": "Rao", "id": SNEHA_ID}
-    route = respx.post(f"{BASE_URL}/employees").respond(201, json=created)
+    route = respx.post(f"{BASE_URL}/tools/create_employee").respond(json=created)
 
     result = await run(
         ctx,
@@ -164,12 +164,16 @@ async def test_create_employee_sends_the_idempotency_key_and_run_id(ctx: ToolCon
 @respx.mock
 async def test_updates_read_the_version_first_and_write_with_it(ctx: ToolContext) -> None:
     respx.get(f"{BASE_URL}/employees/{SNEHA_ID}").respond(json=SNEHA | {"version": 7})
-    patch = respx.patch(f"{BASE_URL}/employees/{SNEHA_ID}").respond(json=SNEHA | {"version": 8})
+    patch = respx.post(f"{BASE_URL}/tools/update_employee").respond(json=SNEHA | {"version": 8})
 
     result = await run(ctx, "update_employee", {"employee_id": SNEHA_ID, "job_title": "Lead"})
 
     assert result.ok and result.data["version"] == 8
-    assert json.loads(patch.calls.last.request.content) == {"jobTitle": "Lead", "version": 7}
+    assert json.loads(patch.calls.last.request.content) == {
+        "employeeId": SNEHA_ID,
+        "jobTitle": "Lead",
+        "version": 7,
+    }
 
 
 @respx.mock
@@ -183,7 +187,7 @@ async def test_a_leave_request_that_breaks_the_rules_is_never_sent(ctx: ToolCont
             "problems": [{"code": "INSUFFICIENT_BALANCE", "message": "Only 13 days available"}],
         }
     )
-    create = respx.post(f"{BASE_URL}/leave-requests").respond(201, json={})
+    create = respx.post(f"{BASE_URL}/tools/create_leave_request").respond(json={})
 
     result = await run(
         ctx,

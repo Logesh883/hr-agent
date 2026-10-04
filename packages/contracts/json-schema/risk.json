@@ -1,0 +1,49 @@
+{
+  "approveMedium": true,
+  "default": "high",
+  "tools": {
+    "create_employee": {
+      "default": "medium"
+    },
+    "update_employee": {
+      "default": "low",
+      "fields": {
+        "status": "medium",
+        "employment_type": "medium"
+      }
+    },
+    "change_manager": {
+      "default": "medium"
+    },
+    "change_department": {
+      "default": "medium"
+    },
+    "start_onboarding": {
+      "default": "low"
+    },
+    "update_onboarding_task": {
+      "default": "low"
+    },
+    "create_leave_request": {
+      "default": "low"
+    },
+    "approve_leave": {
+      "default": "high"
+    },
+    "reject_leave": {
+      "default": "high"
+    },
+    "cancel_leave": {
+      "default": "low"
+    },
+    "propose_attendance_correction": {
+      "default": "low"
+    },
+    "apply_attendance_correction": {
+      "default": "high"
+    },
+    "send_email": {
+      "default": "high"
+    }
+  }
+}

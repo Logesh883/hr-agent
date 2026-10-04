@@ -31,6 +31,8 @@ export interface AuditLogEntry {
   actorName: string | null;
   /** The AI agent run that made the change (actorType AI). */
   agentRunId: string | null;
+  /** The Tool API tool that made the change (POST /tools/:name), if any. */
+  toolName: string | null;
   action: string;
   entityType: AuditEntityType;
   entityId: string;
