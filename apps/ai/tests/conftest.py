@@ -19,5 +19,6 @@ def isolated_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         "LANGFUSE_PUBLIC_KEY",
         "LANGFUSE_SECRET_KEY",
         "LANGFUSE_HOST",
+        "LANGFUSE_BASE_URL",
     ):
         monkeypatch.delenv(name, raising=False)

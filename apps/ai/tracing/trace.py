@@ -7,8 +7,8 @@ The trace is recorded in memory while the agent runs and exported afterwards (se
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime
+from secrets import token_hex
 from typing import Any, Literal
-from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
@@ -19,14 +19,19 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _id() -> str:
-    return str(uuid4())
+# OpenTelemetry ids, which Langfuse uses as-is: 16 random bytes for a trace, 8 for a span.
+def _trace_id() -> str:
+    return token_hex(16)
+
+
+def _span_id() -> str:
+    return token_hex(8)
 
 
 class Observation(BaseModel):
     """A timed step inside a trace. `generation` is Langfuse's name for an LLM call."""
 
-    id: str = Field(default_factory=_id)
+    id: str = Field(default_factory=_span_id)
     kind: Literal["span", "generation"] = "span"
     name: str
     parent_id: str | None = None
@@ -49,7 +54,9 @@ class Observation(BaseModel):
 
 
 class Trace(BaseModel):
-    id: str = Field(default_factory=_id)
+    id: str = Field(default_factory=_trace_id)
+    # The root span every observation hangs under; Langfuse shows it as the run itself.
+    root_span_id: str = Field(default_factory=_span_id)
     name: str
     user_id: str | None = None
     input: Any = None

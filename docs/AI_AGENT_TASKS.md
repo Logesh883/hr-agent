@@ -186,7 +186,7 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 
 ---
 
-## M3: Tool calling and the agent loop, by hand (~4 days)
+## M3: Tool calling and the agent loop, by hand (~4 days) ✅
 
 **Learn**
 - How tool calling works:
@@ -218,7 +218,7 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 
 - [x] A3.4 The agent loop without a framework: messages → LLM with tools → execute calls → append results → repeat until an answer or 8 steps. Returns the answer plus a step-by-step trace. (`apps/ai/agent/loop.py`: parallel tool calls, 8-step limit, 60k-token budget; `uv run hr-ai ask "…" --login EMAIL`.)
 - [x] A3.5 RBAC through tools: ask the same question as the manager and as the employee. The API's 403/404 become clear tool errors ("You don't have access to that employee"). Write tests for it. (`tests/test_rbac_tools.py`, plus the real API in `tests/test_integration_hr_api.py`.)
-- [ ] A3.6 Langfuse Cloud tracing: one trace per request, spans for LLM and tool calls, token usage; tokens and personal data masked. **Built and unit-tested** (`apps/ai/tracing/`: in-memory trace, masking of credentials, contact details and names, httpx exporter to the ingestion API). Still to do: set `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` and confirm a masked trace appears in Langfuse Cloud.
+- [x] A3.6 Langfuse Cloud tracing: one trace per request, spans for LLM and tool calls, token usage; tokens and personal data masked. (`apps/ai/tracing/`: in-memory trace, masking of credentials, contact details and names, exported as OTLP/JSON to Langfuse's `/api/public/otel/v1/traces`, because the batch ingestion API shuts down on 2026-11-16. Confirmed live on 2026-10-04.)
 - [x] A3.7 Tests: `FakeLLM` scripted tool calls + respx-mocked API; one integration test against the real API on `hr_test`. (Integration tests run when `HR_TEST_API_URL` is set.)
 - [x] A3.8 `POST /agent/ask` for read-only questions: "How many annual leave days does Sneha have left?", "Who on my team has attendance anomalies this month?", "Why can't Sneha take 20 days off in February?"
 

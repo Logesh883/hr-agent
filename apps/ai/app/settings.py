@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import SecretStr
+from pydantic import AliasChoices, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -56,7 +56,11 @@ class Settings(BaseSettings):
 
     # Langfuse Cloud tracing (https://cloud.langfuse.com → project → API keys). Leave the keys
     # empty to keep traces local; set both to export one masked trace per agent request.
-    langfuse_host: str = "https://cloud.langfuse.com"
+    # LANGFUSE_BASE_URL is the name Langfuse's docs use; LANGFUSE_HOST is the older one.
+    langfuse_base_url: str = Field(
+        default="https://cloud.langfuse.com",
+        validation_alias=AliasChoices("langfuse_base_url", "langfuse_host"),
+    )
     langfuse_public_key: str = ""
     langfuse_secret_key: SecretStr | None = None
 

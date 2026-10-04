@@ -1,6 +1,6 @@
 # M3: Tool calling and the agent loop, by hand
 
-**Status:** built and tested (A3.1–A3.8). One thing is left to confirm: Langfuse export (A3.6) is unit-tested against a mocked ingestion API, but no trace has been sent to Langfuse Cloud yet because `LANGFUSE_*` keys aren't set. Plan: [AI_AGENT_TASKS.md § M3](../AI_AGENT_TASKS.md#m3-tool-calling-and-the-agent-loop-by-hand-4-days).
+**Status:** done (A3.1–A3.8). Langfuse export was confirmed live on 2026-10-04 (see A3.6). Plan: [AI_AGENT_TASKS.md § M3](../AI_AGENT_TASKS.md#m3-tool-calling-and-the-agent-loop-by-hand-4-days-).
 
 ## In one paragraph
 
@@ -29,7 +29,7 @@ agent/loop.py: run_agent  (max 8 steps, 60k-token budget)
   └───────────────────────────────────────────────────────────────┘
   │
   ├─ response: answer, stop_reason, steps (every LLM turn + tool call), usage, trace_id
-  └─ background: trace ──► mask ──► Langfuse /api/public/ingestion (if keys are set)
+  └─ background: trace ──► mask ──► Langfuse /api/public/otel/v1/traces (if keys are set)
 ```
 
 | File | Role |
@@ -45,7 +45,7 @@ agent/loop.py: run_agent  (max 8 steps, 60k-token budget)
 | `apps/ai/prompts/ask.md` | System prompt (`ask@2`). |
 | `apps/ai/tracing/trace.py` | In-memory `Trace` and `Observation`. |
 | `apps/ai/tracing/masking.py` | Removes tokens, contact details and names before export. |
-| `apps/ai/tracing/langfuse.py` | `LangfuseExporter` (plain httpx), `NullExporter`. |
+| `apps/ai/tracing/langfuse.py` | `LangfuseExporter` (plain httpx, OTLP/JSON), `NullExporter`. |
 | `apps/ai/app/agent_routes.py` | `POST /agent/ask`. |
 | `apps/ai/app/cli.py` | `hr-ai ask "…" --login EMAIL`. |
 
@@ -154,9 +154,9 @@ Before anything leaves the service, `tracing/masking.py` removes:
 
 Ids, dates, employee codes, leave types and counts stay, because they're what you debug with.
 
-The exporter is plain httpx against `POST /api/public/ingestion`: one batch per trace, a `trace-create` event, then a `generation-create` or `span-create` per observation, with `usageDetails` for token counts. The 207 Multi-Status response can fail individual events, so those are logged. With no keys, `NullExporter` does nothing, and the steps are still in the API response.
+The exporter is plain httpx sending OpenTelemetry spans to Langfuse's OTLP endpoint, `POST /api/public/otel/v1/traces`, in the OTLP/HTTP JSON encoding. A trace becomes one root span (type `agent`, carrying the question and answer) with a child span per observation. Langfuse reads its fields from span attributes: `langfuse.observation.type` (`generation` / `span`), `langfuse.observation.input` / `.output`, `.model.name`, `.usage_details` (`{"input": …, "output": …}`), `.level`, and the trace-level `langfuse.trace.name`, `langfuse.user.id` and `langfuse.trace.tags`, which go on every span because Langfuse builds the trace from its spans. Ids follow OpenTelemetry: 32 hex characters for a trace, 16 for a span. The header `x-langfuse-ingestion-version: 4` makes data readable straight away. A rejected span comes back as `partialSuccess` in a 200, so that's logged as a failure too. With no keys, `NullExporter` does nothing, and the steps are still in the API response.
 
-**To switch it on:** create a free project at cloud.langfuse.com, copy its keys into the root `.env` (`LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`), run one `hr-ai ask`, and check that the trace appears with masked names.
+**Switched on** with `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY` and `LANGFUSE_BASE_URL` (or the older `LANGFUSE_HOST`) in the root `.env`. To read traces back from a script, use `GET /api/public/v2/observations?fromStartTime=…&toStartTime=…&fields=core,basic,io,usage,model`. Without `io` in `fields`, input and output come back as `null`, which looks like the masking ate everything.
 
 ## A3.7: tests
 
@@ -166,7 +166,7 @@ The exporter is plain httpx against `POST /api/public/ingestion`: one batch per 
 | `test_hr_read_tools.py` | each tool's endpoint, camelCase params and body, forwarded token, trimmed output, a contract-breaking response |
 | `test_agent_loop.py` | search → balance → answer, parallel calls, bad calls recovered, step limit, token budget, empty reply, trace shape |
 | `test_rbac_tools.py` | A3.5's table, with a token-aware mocked API |
-| `test_tracing.py` | masking rules, ingestion batch shape, basic auth, export failures swallowed |
+| `test_tracing.py` | masking rules, OTLP span tree and attributes, error status, basic auth + ingestion header, export failures (incl. `partialSuccess`) logged and swallowed |
 | `test_ask_route.py` | 401 without a token, full answer with steps, role check, 502 on model failure (still traced) |
 | `test_integration_hr_api.py` | every tool and the loop against the **real** API on `hr_test`, as HR, manager and employee; skipped unless `HR_TEST_API_URL` is set |
 
@@ -203,6 +203,13 @@ HR_TEST_API_URL=http://localhost:4100 uv run pytest -k integration
 - **The phone mask ate dates.** `2026-10-12` matched `\+?\d[\d -]{8,}\d`. The test "keeps ids, dates and numbers" caught it; the pattern now needs a `+` country code or exactly 10 digits.
 - **"20 days off in February" (prompt v1).** The model previewed Feb 1–20 (15 working days, no problems), then invented a reason. Prompt `ask@2`: leave counts working days, so extend the range until the preview covers N; and give only reasons a tool returned.
 - **The answer described the wrong person.** Under `ask@2` the model passed `employee_id: null`, so `preview_leave` checked the *HR user's own* leave and the answer called it Sneha's. Both have 18 days, so the numbers looked right. Fixed in code, not the prompt: `employee_id` is now required. Defaults like "omit for yourself" are dangerous in tool schemas, because a dropped argument silently changes *whose* data you get.
+
+- **The first Langfuse export used an API that's being shut down.** It was written against the batch ingestion API (`/api/public/ingestion`). The first live export succeeded, but the response carried a `_deprecation` notice: on Langfuse Cloud that API stops accepting traces on 2026-11-16, and organisations created after 2026-09-16 can't read traces through the old `GET /api/public/traces/:id` either. Rewritten to OTLP the same day. Lesson: read the whole response body, not just the status code; a 207 with no errors still had something to say.
+- **The env var name didn't match.** Langfuse's docs now say `LANGFUSE_BASE_URL`; the settings read `LANGFUSE_HOST`. Both are accepted now.
+
+### Langfuse live check (2026-10-04)
+
+Manager asks "Who on my team has attendance anomalies this month?": Langfuse shows one trace with `AGENT agent.ask` → `GENERATION llm step 1` (2,363 in / 36 out tokens, `qwen/qwen3.8-27b`) → `SPAN tool get_attendance_month` → `GENERATION llm step 2` (3,231 / 169). Every employee name in tool output and in the answer appears as `[person]`; employee codes and ids are kept.
 
 ## Check yourself
 

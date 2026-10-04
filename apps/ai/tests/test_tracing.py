@@ -7,7 +7,13 @@ import respx
 
 from app.settings import Settings
 from llm.types import Usage
-from tracing.langfuse import LangfuseExporter, NullExporter, create_exporter, ingestion_batch
+from tracing.langfuse import (
+    OTLP_PATH,
+    LangfuseExporter,
+    NullExporter,
+    create_exporter,
+    otlp_request,
+)
 from tracing.masking import Masker, collect_names
 from tracing.trace import Trace
 
@@ -101,27 +107,54 @@ def trace_with_steps() -> Trace:
     return trace
 
 
-def test_ingestion_batch_has_a_trace_and_one_event_per_observation() -> None:
+def spans_of(request: dict[str, Any]) -> list[dict[str, Any]]:
+    (resource_spans,) = request["resourceSpans"]
+    (scope_spans,) = resource_spans["scopeSpans"]
+    return scope_spans["spans"]
+
+
+def attrs(span: dict[str, Any]) -> dict[str, Any]:
+    """An OTLP attribute list as a plain dict of the wrapped values."""
+    return {a["key"]: next(iter(a["value"].values())) for a in span["attributes"]}
+
+
+def test_otlp_request_has_a_root_span_and_one_child_per_observation() -> None:
     trace = trace_with_steps()
 
-    batch = ingestion_batch(trace)["batch"]
+    root, generation, span = spans_of(otlp_request(trace))
 
-    assert [event["type"] for event in batch] == [
-        "trace-create",
-        "generation-create",
-        "span-create",
-    ]
-    trace_body, generation, span = (event["body"] for event in batch)
-    assert trace_body["id"] == trace.id and trace_body["userId"] == "u1"
-    assert generation["traceId"] == trace.id
-    assert generation["usageDetails"] == {"input": 120, "output": 8}
-    assert generation["model"] == "m"
-    assert span["endTime"].endswith("Z")
-    assert "usageDetails" not in span
+    assert {s["traceId"] for s in (root, generation, span)} == {trace.id}
+    assert len(trace.id) == 32 and len(root["spanId"]) == 16
+    assert "parentSpanId" not in root
+    assert generation["parentSpanId"] == span["parentSpanId"] == root["spanId"]
+    assert attrs(root)["langfuse.observation.type"] == "agent"
+    assert attrs(root)["langfuse.trace.input"].startswith('{"question"')
+    # Trace-level fields ride on every span; Langfuse builds the trace from its spans.
+    assert attrs(span)["langfuse.user.id"] == "u1"
+    assert attrs(span)["langfuse.trace.tags"] == {"values": [{"stringValue": "ask"}]}
+    assert attrs(generation)["langfuse.observation.type"] == "generation"
+    assert attrs(generation)["langfuse.observation.model.name"] == "m"
+    assert json.loads(attrs(generation)["langfuse.observation.usage_details"]) == {
+        "input": 120,
+        "output": 8,
+    }
+    assert "langfuse.observation.usage_details" not in attrs(span)
+    assert int(span["endTimeUnixNano"]) >= int(span["startTimeUnixNano"]) > 0
 
 
-def test_ingestion_batch_is_masked() -> None:
-    text = json.dumps(ingestion_batch(trace_with_steps()))
+def test_an_error_observation_gets_an_error_status() -> None:
+    trace = Trace(name="t")
+    with pytest.raises(RuntimeError), trace.observe("tool x"):
+        raise RuntimeError("boom")
+
+    _, span = spans_of(otlp_request(trace))
+
+    assert span["status"] == {"code": 2, "message": "RuntimeError: boom"}
+    assert attrs(span)["langfuse.observation.level"] == "ERROR"
+
+
+def test_otlp_request_is_masked() -> None:
+    text = json.dumps(otlp_request(trace_with_steps()))
 
     assert "Sneha" not in text
     assert "Lakshmi" not in text
@@ -129,10 +162,8 @@ def test_ingestion_batch_is_masked() -> None:
 
 
 @respx.mock
-async def test_exporter_posts_the_batch_with_basic_auth() -> None:
-    route = respx.post(f"{LANGFUSE}/api/public/ingestion").respond(
-        207, json={"successes": [], "errors": []}
-    )
+async def test_exporter_posts_otlp_json_with_basic_auth() -> None:
+    route = respx.post(f"{LANGFUSE}{OTLP_PATH}").respond(200, json={})
     exporter = LangfuseExporter(host=LANGFUSE, public_key="pk", secret_key="sk")
 
     await exporter.export(trace_with_steps())
@@ -140,24 +171,29 @@ async def test_exporter_posts_the_batch_with_basic_auth() -> None:
 
     request = route.calls.last.request
     assert request.headers["authorization"] == "Basic cGs6c2s="  # pk:sk
-    assert len(json.loads(request.content)["batch"]) == 3
+    assert request.headers["x-langfuse-ingestion-version"] == "4"
+    assert len(spans_of(json.loads(request.content))) == 3
 
 
 @pytest.mark.parametrize(
     "response",
     [
-        httpx.Response(207, json={"successes": [], "errors": [{"id": "x", "status": 400}]}),
+        httpx.Response(200, json={"partialSuccess": {"rejectedSpans": 1, "errorMessage": "x"}}),
         httpx.Response(401, text="bad keys"),
         httpx.ConnectError("down"),
     ],
 )
 @respx.mock
-async def test_export_failures_are_logged_not_raised(response: Any) -> None:
-    respx.post(f"{LANGFUSE}/api/public/ingestion").mock(side_effect=[response])
+async def test_export_failures_are_logged_not_raised(
+    response: Any, caplog: pytest.LogCaptureFixture
+) -> None:
+    respx.post(f"{LANGFUSE}{OTLP_PATH}").mock(side_effect=[response])
     exporter = LangfuseExporter(host=LANGFUSE, public_key="pk", secret_key="sk")
 
     await exporter.export(trace_with_steps())  # no exception
     await exporter.aclose()
+
+    assert [r.getMessage() for r in caplog.records] == ["trace.export_failed"]
 
 
 def test_no_keys_means_nothing_is_exported() -> None:
