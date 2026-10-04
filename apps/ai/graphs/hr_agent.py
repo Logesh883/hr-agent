@@ -28,7 +28,10 @@ State is plain JSON. The LLM, the HR client (with the user's token), the retriev
 trace are the run's context: never checkpointed, supplied again on every resume.
 """
 
+import asyncio
 import json
+import logging
+import random
 from collections.abc import Awaitable
 from dataclasses import dataclass, field, replace
 from typing import Annotated, Any, Literal, Protocol, Required, TypedDict, cast
@@ -43,6 +46,7 @@ from langgraph.types import interrupt
 from pydantic import ValidationError
 
 from agent.ask import ASK_REGISTRY, READ_REGISTRY, build_ask_messages
+from agent.expectations import COMPENSATIONS, EXPECTATIONS
 from agent.provenance import is_id_field, question_for, unsupported_arguments
 from agent.risk import RiskPolicy, default_policy
 from graphs.plan import (
@@ -57,7 +61,7 @@ from graphs.react import REACT_GRAPH, AgentContext, add_usage, append
 from intent.parser import parse_request
 from intent.prompt import Role
 from intent.schema import MIN_CONFIDENCE, Intent, ParsedRequest
-from llm.base import LLMClient
+from llm.base import LLMClient, LLMError
 from llm.types import Message, ToolCall
 from prompts import load_prompt
 from rag.retrieval import hit_payload
@@ -68,6 +72,8 @@ from tools.policy import POLICY_TOOLS
 from tools.registry import ToolRegistry, result_content, validation_summary
 from tracing.llm import TracedLLM
 from tracing.trace import Trace
+
+logger = logging.getLogger("hr_ai.graph")
 
 Route = Literal["clarify", "decline", "simple", "plan"]
 Status = Literal["answered", "failed"]
@@ -146,8 +152,13 @@ class HrState(TypedDict, total=False):
     # A6.4: step id → {"decision", "arguments", "hash", "risk", "by", "comment", "preview"}.
     approvals: Annotated[dict[str, dict[str, Any]], merge]
     approval_error: str | None
-    # Why execution stopped early (a rejected step), if it did.
+    # Why execution stopped early, if it did: a rejected step, a failed write, or a write
+    # whose result didn't check out (A7.2).
     stopped: str | None
+    stopped_kind: Literal["rejected", "failed", "mismatch"] | None
+    compensated: bool
+    # A7.4: one line per step: done / verified / failed / skipped / rejected / not run / …
+    summary: list[dict[str, Any]]
     verification: dict[str, Any]
     # The short path's steps (AgentStep dumps) and token usage.
     steps: list[dict[str, Any]]
@@ -167,6 +178,8 @@ class HrContext:
     # M5 ran plans read-only; M6 lets plans write, behind the risk policy and approval.
     allow_writes: bool = True
     risk_policy: RiskPolicy = field(default_factory=default_policy)
+    # A7.3: waits before retrying a transient failure (5xx, timeout, unreachable).
+    retry_delays: tuple[float, ...] = (0.5, 1.0, 2.0)
 
     @property
     def registry(self) -> ToolRegistry:
@@ -451,6 +464,8 @@ def route_next(state: HrState, runtime: Runtime[HrContext]) -> str:
     if still_missing(state):
         return "ask_value"
     if state.get("stopped"):
+        if state.get("stopped_kind") in ("failed", "mismatch") and not state.get("compensated"):
+            return "compensate"
         return "verify"
     step = next_step(state)
     if step is None:
@@ -580,27 +595,116 @@ async def execute_step(state: HrState, runtime: Runtime[HrContext]) -> dict[str,
         key = f"{thread}:{state.get('plan_hash', '')[:12]}:{step['id']}"
         tool_ctx = replace(ctx.tools, idempotency_key=key)
 
-    write = get_stream_writer()
-    write({"event": "tool_started", "tool": step["tool"], "step": step["id"]})
-    call = ToolCall(id=step["id"], name=step["tool"], arguments=json.dumps(arguments))
-    with ctx.trace.observe(
-        f"tool {step['tool']}", input=arguments, metadata={"step": step["id"]}
-    ) as span:
-        result = await ctx.registry.execute(call, tool_ctx)
-        span.output = result.model_dump(exclude_none=True)
-        if not result.ok:
-            span.level = "WARNING"
-            span.status_message = result.error
-    write({"event": "tool_finished", "tool": step["tool"], "step": step["id"], "ok": result.ok})
-    record = {
+    is_write = tool is not None and tool.risk is Risk.WRITE
+    expectation = EXPECTATIONS.get(step["tool"]) if is_write else None
+    before = None
+    if expectation is not None and expectation.before is not None:
+        before = await expectation.before(tool_ctx, arguments)
+
+    result = await run_with_retries(ctx, tool_ctx, step, arguments)
+    record: dict[str, Any] = {
         "tool": step["tool"],
         "arguments": arguments,
         "status": "done" if result.ok else "failed",
         "ok": result.ok,
         "data": result.data,
         "error": result.error,
+        "error_kind": result.error_kind,
     }
-    return {"results": {step["id"]: record}, "choices": choices}
+    update: dict[str, Any] = {"results": {step["id"]: record}, "choices": choices}
+    if not is_write:
+        return update
+    if not result.ok:
+        # A failed write stops every later step: the plan assumed it would work.
+        update["stopped"] = f"{step['id']} ({step['tool']}) failed: {result.error}"
+        update["stopped_kind"] = "failed"
+        return update
+    if expectation is not None:
+        # A7.2: re-read and compare. 201 means accepted, not "the state is right".
+        mismatches = await expectation.check(tool_ctx, arguments, result.data or {}, before)
+        record["verification"] = {"ok": not mismatches, "mismatches": mismatches}
+        get_stream_writer()(
+            {
+                "event": "verified",
+                "step": step["id"],
+                "ok": not mismatches,
+                "mismatches": mismatches,
+            }
+        )
+        if mismatches:
+            record["status"] = "mismatch"
+            update["stopped"] = f"{step['id']} ({step['tool']}) didn't check out: " + "; ".join(
+                mismatches
+            )
+            update["stopped_kind"] = "mismatch"
+        else:
+            record["status"] = "verified"
+    return update
+
+
+async def run_with_retries(
+    ctx: HrContext, tool_ctx: ToolContext, step: dict[str, Any], arguments: dict[str, Any]
+) -> ToolResult:
+    """A7.3: a transient failure (5xx, timeout, HR API unreachable) is retried up to three
+    times, waiting longer each time, with jitter. Safe for writes too: they carry the step's
+    idempotency key, so a retry can't act twice. Anything else is final at once."""
+    write = get_stream_writer()
+    call = ToolCall(id=step["id"], name=step["tool"], arguments=json.dumps(arguments))
+    for attempt in range(len(ctx.retry_delays) + 1):
+        write(
+            {
+                "event": "tool_started",
+                "tool": step["tool"],
+                "step": step["id"],
+                "attempt": attempt + 1,
+            }
+        )
+        with ctx.trace.observe(
+            f"tool {step['tool']}",
+            input=arguments,
+            metadata={"step": step["id"], "attempt": attempt + 1},
+        ) as span:
+            result = await ctx.registry.execute(call, tool_ctx)
+            span.output = result.model_dump(exclude_none=True)
+            if not result.ok:
+                span.level = "WARNING"
+                span.status_message = result.error
+        write({"event": "tool_finished", "tool": step["tool"], "step": step["id"], "ok": result.ok})
+        if result.ok or not result.transient or attempt == len(ctx.retry_delays):
+            return result
+        delay = ctx.retry_delays[attempt] * random.uniform(1.0, 1.5)
+        write(
+            {
+                "event": "tool_retry",
+                "step": step["id"],
+                "after_s": round(delay, 2),
+                "error": result.error,
+            }
+        )
+        await asyncio.sleep(delay)
+    raise AssertionError("unreachable")
+
+
+async def compensate(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
+    """A7.4: after a failure, undo what this run did *only* where undoing is safe (see
+    agent/expectations.py). Everything else is left for a person and said plainly."""
+    ctx = runtime.context
+    thread = str(get_config().get("configurable", {}).get("thread_id", "run"))
+    updates: dict[str, dict[str, Any]] = {}
+    for step_id, record in state.get("results", {}).items():
+        undo = COMPENSATIONS.get(record.get("tool", ""))
+        if undo is None or record.get("status") not in ("done", "verified", "mismatch"):
+            continue
+        key = f"{thread}:{state.get('plan_hash', '')[:12]}:{step_id}"
+        try:
+            note = await undo(replace(ctx.tools, idempotency_key=key), record.get("data") or {})
+            updates[step_id] = record | {"status": "compensated", "compensation": note}
+        except Exception as error:  # an undo that fails is reported, never retried blindly
+            updates[step_id] = record | {"compensation": f"not undone: {error}"}
+        get_stream_writer()(
+            {"event": "compensated", "step": step_id, "note": updates[step_id]["compensation"]}
+        )
+    return {"results": updates, "compensated": True}
 
 
 async def approve(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
@@ -765,10 +869,12 @@ def _describe(candidate: Any) -> str:
 
 
 async def verify(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
-    """Read-only plans: did every step run? (Writes get real checks in M7.)
+    """Did every step run, and did every write check out?
 
-    A step that failed is a problem. A search that found nobody is a *finding*: for a new
-    hire it's the expected answer (no duplicate record), so it's reported, not flagged.
+    Writes were already re-read right after they ran (execute_step, A7.2); here a write that
+    didn't match is a problem, like a step that failed. A search that found nobody is a
+    *finding*: for a new hire it's the expected answer (no duplicate record), so it's
+    reported, not flagged.
     """
     problems: list[str] = []
     findings: list[str] = []
@@ -782,11 +888,48 @@ async def verify(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
                 problems.append(f"{where} never ran.")
         elif result.get("status") in ("skipped", "rejected"):
             findings.append(f"{where} {result.get('error')}")
+        elif result.get("status") == "mismatch":
+            verification: dict[str, Any] = result.get("verification") or {}
+            mismatches: list[str] = verification.get("mismatches", [])
+            problems.append(f"{where} ran but didn't check out: " + "; ".join(mismatches))
+        elif result.get("status") == "compensated":
+            findings.append(f"{where} was undone: {result.get('compensation')}.")
         elif not result.get("ok"):
             problems.append(f"{where} failed: {result.get('error')}")
         elif _empty(result.get("data")):
             findings.append(f"{where} found nothing.")
-    return {"verification": {"ok": not problems, "problems": problems, "findings": findings}}
+    return {
+        "verification": {"ok": not problems, "problems": problems, "findings": findings},
+        "summary": completion_summary(state),
+    }
+
+
+UNDO_NOTE = "not undone automatically: a person should decide"
+
+
+def completion_summary(state: HrState) -> list[dict[str, Any]]:
+    """A7.4: what happened to every step, plainly. Writes that stayed after a failure are
+    called out, so nothing is silently left half-done."""
+    results = state.get("results", {})
+    failed_run = state.get("stopped_kind") in ("failed", "mismatch")
+    lines: list[dict[str, Any]] = []
+    for step in (state.get("plan") or {}).get("steps", []):
+        result = results.get(step["id"])
+        line: dict[str, Any] = {"step": step["id"], "tool": step["tool"]}
+        if result is None:
+            line["status"] = "not run"
+            line["detail"] = state.get("stopped") or "not reached"
+        else:
+            line["status"] = result.get("status")
+            line["detail"] = result.get("compensation") or result.get("error")
+            verification: dict[str, Any] = result.get("verification") or {}
+            if verification.get("mismatches"):
+                line["detail"] = "; ".join(verification["mismatches"])
+            is_write = step["tool"] in EXPECTATIONS or step["tool"] in COMPENSATIONS
+            if failed_run and is_write and result.get("status") in ("done", "verified"):
+                line["detail"] = UNDO_NOTE
+        lines.append(line)
+    return lines
 
 
 def _empty(data: Any) -> bool:
@@ -817,6 +960,15 @@ async def respond(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]
             parts.append(f"{step['id']} {step['tool']} ({step['reason']}): {content}")
     for passage in state.get("policy", []):
         parts.append(f"Policy passage [{passage['citation']}]: {passage['text']}")
+    if state.get("summary"):
+        parts.append(
+            "What happened to each step: "
+            + "; ".join(
+                f"{line['step']} {line['tool']}: {line['status']}"
+                + (f" ({line['detail']})" if line.get("detail") else "")
+                for line in state.get("summary", [])
+            )
+        )
     for step_id, approval in state.get("approvals", {}).items():
         parts.append(
             f"Approval for {step_id} ({approval['tool']}): {approval['decision']} by the user"
@@ -827,19 +979,36 @@ async def respond(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]
         parts.append("Steps that failed: " + "; ".join(verification["problems"]))
     if verification.get("findings"):
         parts.append("Empty results (findings, not errors): " + "; ".join(verification["findings"]))
-    response = await ctx.traced_llm("llm respond").chat(
-        [Message.system(system), Message.user("\n\n".join(parts))],
-        temperature=0,
-        max_tokens=1024,
-        prompt=prompt.ref,
-    )
-    answer = (response.text or "").strip() or "I couldn't produce an answer."
     failed = bool(state.get("plan_problems"))
+    try:
+        response = await ctx.traced_llm("llm respond").chat(
+            [Message.system(system), Message.user("\n\n".join(parts))],
+            temperature=0,
+            max_tokens=1024,
+            prompt=prompt.ref,
+        )
+    except LLMError as error:
+        # The provider is down after the work is done: report it without the model rather
+        # than lose the result (M7, degrading gracefully).
+        logger.warning("respond.fallback", extra={"fields": {"error": str(error)}})
+        return {"answer": plain_summary(state), "status": "failed" if failed else "answered"}
+    answer = (response.text or "").strip() or plain_summary(state)
     return {
         "answer": answer,
         "status": "failed" if failed else "answered",
         "usage": response.usage.model_dump(),
     }
+
+
+def plain_summary(state: HrState) -> str:
+    """The answer without an LLM: each step's outcome, from code."""
+    lines = ["The assistant couldn't write a full answer, so here is what happened:"]
+    for line in state.get("summary") or completion_summary(state):
+        detail = f" ({line['detail']})" if line.get("detail") else ""
+        lines.append(f"- {line['step']} {line['tool'].replace('_', ' ')}: {line['status']}{detail}")
+    if state.get("plan_problems"):
+        lines.append("No plan could be made: " + "; ".join(state.get("plan_problems", [])))
+    return "\n".join(lines)
 
 
 def result_content_text(result: dict[str, Any]) -> str:
@@ -871,6 +1040,7 @@ def build_hr_graph(
         "ask_value": ask_value,
         "approve": approve,
         "execute_step": execute_step,
+        "compensate": compensate,
         "verify": verify,
         "respond": respond,
     }
@@ -887,12 +1057,13 @@ def build_hr_graph(
     graph.add_edge("answer_simple", END)
     graph.add_edge("retrieve_policy", "plan")
     graph.add_edge("plan", "validate_plan")
-    after_steps = ["ask_value", "approve", "execute_step", "verify"]
+    after_steps = ["ask_value", "approve", "execute_step", "compensate", "verify"]
     graph.add_conditional_edges(
         "validate_plan", route_after_validate, ["plan", "respond", *after_steps]
     )
     for node in ("ask_value", "approve", "execute_step"):
         graph.add_conditional_edges(node, route_next, after_steps)
+    graph.add_edge("compensate", "verify")
     graph.add_edge("verify", "respond")
     graph.add_edge("respond", END)
     return graph.compile(checkpointer=checkpointer)

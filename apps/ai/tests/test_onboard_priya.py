@@ -92,7 +92,23 @@ def onboarding() -> dict[str, Any]:
             "departmentName": "Engineering",
         },
         "started": True,
-        "tasks": [],
+        "tasks": [
+            {
+                "id": "5c0b1f8e-0000-4000-8000-0000000000d1",
+                "title": "Upload PAN card",
+                "description": None,
+                "category": "DOCUMENTS",
+                "assignee": "EMPLOYEE",
+                "dueDate": "2026-10-12",
+                "status": "PENDING",
+                "requiredDocumentType": "PAN_CARD",
+                "completedAt": None,
+                "completedBy": None,
+                "notes": None,
+                "isOverdue": False,
+                "canUpdate": True,
+            }
+        ],
         "progress": {"total": 9, "done": 0, "skipped": 0, "overdue": 0, "percent": 0.0},
         "missingInfo": [
             {"code": "PHONE", "message": "Phone number is missing"},
@@ -128,6 +144,15 @@ def hr_api() -> Iterator[respx.MockRouter]:
         api.get(f"/departments/{ENG_ID}").respond(json={"id": ENG_ID, "name": "Engineering"})
         api.post("/employees").respond(201, json=PRIYA)
         api.post(f"/employees/{PRIYA_ID}/onboarding").respond(201, json=onboarding())
+        # Read back after each write (A7.2).
+        api.get(f"/employees/{PRIYA_ID}").respond(
+            json=PRIYA
+            | {
+                "department": {"id": ENG_ID, "name": "Engineering"},
+                "manager": ref(RAHUL_ID, "Rahul", "Sharma", "EMP002"),
+            }
+        )
+        api.get(f"/employees/{PRIYA_ID}/onboarding").respond(json=onboarding())
         yield api
 
 
@@ -259,6 +284,12 @@ async def test_an_edit_changes_exactly_what_runs(
 ) -> None:
     llm = FakeLLM([PARSE, PLAN, "Created."])
     await run_until_approval(graph, http, llm)
+    senior = PRIYA | {
+        "jobTitle": "Senior Software Engineer",
+        "department": {"id": ENG_ID, "name": "Engineering"},
+        "manager": ref(RAHUL_ID, "Rahul", "Sharma", "EMP002"),
+    }
+    hr_api.get(f"/employees/{PRIYA_ID}").respond(json=senior)
 
     await resume_run(
         graph,

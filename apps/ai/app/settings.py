@@ -38,6 +38,9 @@ class Settings(BaseSettings):
     web_origin: str = "http://localhost:3000"
     # Seconds to wait on the HR API before giving up.
     hr_api_timeout: float = 10.0
+    # Development only (A7.5 demo): HR API failures to inject into agent runs, e.g.
+    # "POST /leave-requests=500,drop". See app/faults.py. Ignored in production.
+    hr_faults: str = ""
 
     # Which hosted model answers. Every provider speaks the OpenAI chat completions API;
     # "groq", "openrouter" and "gemini" fill in LLM_BASE_URL, "custom" needs it set.

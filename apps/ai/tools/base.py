@@ -8,7 +8,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Literal, Protocol, cast
 
 from pydantic import BaseModel, ConfigDict
 
@@ -58,6 +58,32 @@ class ToolError(Exception):
     """A failure the model can act on, worded for it ("Search for the employee first")."""
 
 
+# What kind of failure, so code can decide what to do next (M7, A7.3):
+#   invalid      the call was wrong (bad arguments, 400): fix it or ask the user
+#   rule         a business rule refused it (422 problems): relay them word for word
+#   forbidden    403 / not_found 404: stop and explain
+#   conflict     409: stale version (re-read, retry once) or a duplicate
+#   busy         409: the same Idempotency-Key is still being handled; retry shortly
+#   server, unavailable, timeout, busy: transient, worth retrying
+#   auth, bad_response, crash, tool: stop
+ErrorKind = Literal[
+    "invalid",
+    "rule",
+    "forbidden",
+    "not_found",
+    "conflict",
+    "busy",
+    "server",
+    "unavailable",
+    "timeout",
+    "auth",
+    "bad_response",
+    "crash",
+    "tool",
+]
+TRANSIENT: frozenset[str] = frozenset({"server", "unavailable", "timeout", "busy"})
+
+
 class ToolResult(BaseModel):
     """The uniform shape every tool call ends in, success or not."""
 
@@ -65,14 +91,22 @@ class ToolResult(BaseModel):
     data: Any = None
     # Plain-language reason for the model; never a stack trace.
     error: str | None = None
+    error_kind: ErrorKind | None = None
+    status_code: int | None = None
 
     @classmethod
     def success(cls, data: Any) -> "ToolResult":
         return cls(ok=True, data=data)
 
     @classmethod
-    def failure(cls, error: str) -> "ToolResult":
-        return cls(ok=False, error=error)
+    def failure(
+        cls, error: str, kind: ErrorKind = "tool", status_code: int | None = None
+    ) -> "ToolResult":
+        return cls(ok=False, error=error, error_kind=kind, status_code=status_code)
+
+    @property
+    def transient(self) -> bool:
+        return self.error_kind in TRANSIENT
 
 
 @dataclass(frozen=True)

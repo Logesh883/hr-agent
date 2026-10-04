@@ -26,6 +26,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.agent_routes import bearer_token, get_policy_retriever, signed_in_user
+from app.faults import configured_faults
 from app.hr_client import HrApiClient
 from app.llm_routes import get_llm
 from app.settings import Settings
@@ -126,6 +127,7 @@ async def get_run_service(request: Request) -> RunService:
                 hr_api_timeout=settings.hr_api_timeout,
                 policies=get_policy_retriever(request, llm),
                 outbox=PostgresOutbox(store.engine),
+                faults=configured_faults(settings.hr_faults, settings.ai_env),
             )
             state.run_service_stack = stack
     return state.run_service

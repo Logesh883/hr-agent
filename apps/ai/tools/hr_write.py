@@ -17,6 +17,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, EmailStr, Field
 
+from app.hr_client import HrApiError
 from contracts import generated as api
 from tools.base import Risk, Tool, ToolContext, ToolError, ToolInput
 from tools.hr_read import EmployeeId, LeaveType
@@ -141,13 +142,26 @@ async def _patch_employee(ctx: ToolContext, employee_id: UUID, changes: dict[str
     changed the record in between, the API answers 409 and nothing is overwritten."""
     if not changes:
         raise ToolError("Nothing to change: give at least one field.")
-    current = await _employee(ctx, employee_id)
-    body = _body(api.UpdateEmployee, **changes, version=current.version)
-    data = await ctx.hr.patch(
-        f"/employees/{employee_id}", body, idempotency_key=ctx.idempotency_key
-    )
-    e = api.Employee.model_validate(data)
-    return {"id": str(e.id), "version": e.version} | _employee_view(e)
+    for attempt in range(2):
+        current = await _employee(ctx, employee_id)
+        body = _body(api.UpdateEmployee, **changes, version=current.version)
+        # The first attempt's 409 is stored under its key as a final answer, so a retry
+        # with a fresh version needs its own (still stable) key.
+        key = ctx.idempotency_key and (ctx.idempotency_key + (f":r{attempt}" if attempt else ""))
+        try:
+            data = await ctx.hr.patch(f"/employees/{employee_id}", body, idempotency_key=key)
+        except HrApiError as error:
+            # A7.3 "409 stale version: re-read and retry once".
+            if (
+                error.status_code == 409
+                and "changed by someone else" in error.message
+                and attempt == 0
+            ):
+                continue
+            raise
+        e = api.Employee.model_validate(data)
+        return {"id": str(e.id), "version": e.version} | _employee_view(e)
+    raise AssertionError("unreachable")
 
 
 async def _preview_patch(

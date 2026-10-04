@@ -22,6 +22,7 @@ from typing import Any
 
 import httpx
 
+from app.faults import FaultInjector, FaultRule
 from app.hr_client import HrApiClient, SessionUser
 from graphs.hr_agent import HrContext
 from graphs.persistence import TERMINAL, RunRecord, RunStore
@@ -63,6 +64,7 @@ class RunService:
         policies: PolicyRetriever | None = None,
         outbox: Outbox | None = None,
         today: Callable[[], date] = date.today,
+        faults: list[FaultRule] | None = None,
     ) -> None:
         self.graph = graph
         self.store = store
@@ -73,6 +75,7 @@ class RunService:
         self.policies = policies
         self.outbox = outbox
         self.today = today
+        self.faults = faults
         self._tasks: dict[str, asyncio.Task[None]] = {}
 
     async def start(self, caller: Caller, request: str) -> tuple[RunRecord, asyncio.Task[None]]:
@@ -154,7 +157,10 @@ class RunService:
                 # process loses at most the node it was in.
                 recorded.update(await self.store.record_trace(run.id, trace, skip=recorded))
 
-        async with httpx.AsyncClient(base_url=self.hr_api_url, timeout=self.hr_api_timeout) as http:
+        transport = FaultInjector(self.faults) if self.faults else None
+        async with httpx.AsyncClient(
+            base_url=self.hr_api_url, timeout=self.hr_api_timeout, transport=transport
+        ) as http:
             tools = ToolContext(
                 # The run id goes to the HR API as X-Agent-Run-Id: its audit entries are
                 # then marked AI, with this run.

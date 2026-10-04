@@ -16,7 +16,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from app.hr_client import HrApiError, HrApiUnavailableError
 from llm.types import ToolCall, ToolSpec
-from tools.base import Tool, ToolContext, ToolError, ToolResult
+from tools.base import ErrorKind, Tool, ToolContext, ToolError, ToolResult
 
 logger = logging.getLogger("hr_ai.tools")
 
@@ -66,42 +66,52 @@ class ToolRegistry:
         tool = self._tools.get(call.name)
         if tool is None:
             return ToolResult.failure(
-                f"Unknown tool '{call.name}'. Available tools: {', '.join(self._tools)}."
+                f"Unknown tool '{call.name}'. Available tools: {', '.join(self._tools)}.",
+                "invalid",
             )
         try:
             raw = json.loads(call.arguments or "{}")
         except json.JSONDecodeError as error:
-            return ToolResult.failure(f"Arguments must be a JSON object ({error.msg}).")
+            return ToolResult.failure(f"Arguments must be a JSON object ({error.msg}).", "invalid")
         try:
             args = tool.input_model.model_validate(raw)
         except ValidationError as error:
-            return ToolResult.failure(f"Invalid arguments: {validation_summary(error)}")
+            return ToolResult.failure(f"Invalid arguments: {validation_summary(error)}", "invalid")
 
         try:
             async with asyncio.timeout(tool.timeout_s):
                 data = await tool.run(ctx, args)
         except TimeoutError:
-            return ToolResult.failure(f"The tool timed out after {tool.timeout_s:g} seconds.")
+            return ToolResult.failure(
+                f"The tool timed out after {tool.timeout_s:g} seconds.", "timeout"
+            )
         except ToolError as error:
             return ToolResult.failure(str(error))
         except HrApiError as error:
-            return ToolResult.failure(describe_hr_error(error))
+            return ToolResult.failure(
+                describe_hr_error(error), error_kind(error), status_code=error.status_code
+            )
         except HrApiUnavailableError:
-            return ToolResult.failure("The HR system is unavailable right now. Try again later.")
+            return ToolResult.failure(
+                "The HR system is unavailable right now. Try again later.", "unavailable"
+            )
         except ValidationError:
             # The HR API answered with a shape our contracts don't describe: a bug, not the
             # model's fault, so it gets no detail it could try to "fix".
             logger.exception("tool.bad_response", extra={"fields": {"tool": tool.name}})
-            return ToolResult.failure("The HR system returned data in an unexpected format.")
+            return ToolResult.failure(
+                "The HR system returned data in an unexpected format.", "bad_response"
+            )
         except Exception:
             logger.exception("tool.crash", extra={"fields": {"tool": tool.name}})
-            return ToolResult.failure("The tool failed unexpectedly.")
+            return ToolResult.failure("The tool failed unexpectedly.", "crash")
         return ToolResult.success(_JSON.dump_python(data, mode="json"))
 
 
 def result_content(result: ToolResult) -> str:
     """The tool message content sent back to the model: compact JSON, capped in size."""
-    text = result.model_dump_json(exclude_none=True)
+    # The error kind and status are for code (A7.3); the model gets the plain message.
+    text = result.model_dump_json(exclude_none=True, exclude={"error_kind", "status_code"})
     if len(text) <= MAX_RESULT_CHARS:
         return text
     return json.dumps(
@@ -114,6 +124,27 @@ def result_content(result: ToolResult) -> str:
         },
         ensure_ascii=False,
     )
+
+
+def error_kind(error: HrApiError) -> ErrorKind:
+    """The HR API's status, as a kind of failure code can act on (A7.3)."""
+    status = error.status_code
+    if status >= 500:
+        return "server"
+    if status == 409 and "Idempotency-Key is still in progress" in error.message:
+        # Our own earlier attempt (same key) hasn't finished: not a real conflict. Retrying
+        # gets its stored answer, which is how "409 duplicate: treat as done if the key
+        # matches" works: the HR API replays the first result for a matching key.
+        return "busy"
+    kinds: dict[int, ErrorKind] = {
+        400: "invalid",
+        401: "auth",
+        403: "forbidden",
+        404: "not_found",
+        409: "conflict",
+        422: "rule" if error.problems else "invalid",
+    }
+    return kinds.get(status, "invalid")
 
 
 def describe_hr_error(error: HrApiError) -> str:

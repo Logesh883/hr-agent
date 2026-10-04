@@ -10,6 +10,7 @@ uv run hr-ai ingest                    # policies → chunks + embeddings (ai sc
 uv run hr-ai search "Can unused leave carry over?" --mode vector   # retrieval only, no LLM
 uv run hr-ai run "Compare Sneha's and Arun's leave" --login hr@hr.local   # the HR agent graph
 uv run hr-ai run --resume RUN_ID --login hr@hr.local   # continue a stopped or waiting run
+uv run hr-ai run "..." --login hr@hr.local --faults "POST /leave-requests=500,drop"   # A7.5 demo
 """
 
 import argparse
@@ -26,6 +27,7 @@ from pydantic import ValidationError
 
 from agent.ask import answer_question, new_ask_trace
 from agent.loop import AgentRun
+from app.faults import configured_faults
 from app.hr_client import HrApiClient, HrApiError, HrApiUnavailableError
 from app.llm_routes import build_messages
 from app.log import configure_logging
@@ -112,6 +114,12 @@ def main(argv: list[str] | None = None) -> None:
     run.add_argument("--resume", metavar="RUN_ID", help="continue this run")
     run.add_argument("--login", metavar="EMAIL", required=True)
     run.add_argument("--model", help="override LLM_MODEL")
+    run.add_argument(
+        "--faults",
+        metavar="SPEC",
+        help='inject HR API failures (dev only), e.g. "POST /leave-requests=500,drop"; '
+        "see app/faults.py",
+    )
 
     args = parser.parse_args(argv)
     if args.command == "run":
@@ -419,6 +427,7 @@ async def _run(args: argparse.Namespace) -> int:
                 hr_api_timeout=settings.hr_api_timeout,
                 policies=policies,
                 outbox=PostgresOutbox(store.engine),
+                faults=configured_faults(args.faults or settings.hr_faults, settings.ai_env),
             )
             if args.resume:
                 record, task = await service.resume(caller, args.resume, None)

@@ -350,7 +350,7 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 
 ---
 
-## M7: Verification, recovery and failure handling (~3 days)
+## M7: Verification, recovery and failure handling (~3 days) ✅
 
 **Learn**
 - "The tool returned 200" is not the same as "the business state is right": post-conditions.
@@ -359,9 +359,9 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 - Budgets and loop limits; degrading gracefully when the LLM provider is down.
 
 **Build**
-- [ ] A7.1 Declarative expectations per write tool: `create_employee` → the employee exists with those fields; `start_onboarding` → tasks exist; `approve_leave` → status APPROVED and the balance moved.
-- [ ] A7.2 Verify node that re-reads through read tools; any mismatch is reported and stops further writes.
-- [ ] A7.3 Map API errors to actions:
+- [x] A7.1 Declarative expectations per write tool: `create_employee` → the employee exists with those fields; `start_onboarding` → tasks exist; `approve_leave` → status APPROVED and the balance moved.
+- [x] A7.2 Verify node that re-reads through read tools; any mismatch is reported and stops further writes.
+- [x] A7.3 Map API errors to actions:
 
   | API response | What the agent does |
   | --- | --- |
@@ -371,8 +371,8 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
   | 409 duplicate | Treat as done, if the key matches |
   | 5xx / timeout | Retry up to 3 times with backoff |
 
-- [ ] A7.4 Partial-completion summary (done / failed / skipped per step); compensate only where it's safe (e.g. cancel a leave request this run created), otherwise report clearly.
-- [ ] A7.5 Fault-injection tests (timeouts, 500s, 409s) and the "tool failure" demo scenario.
+- [x] A7.4 Partial-completion summary (done / failed / skipped per step); compensate only where it's safe (e.g. cancel a leave request this run created), otherwise report clearly.
+- [x] A7.5 Fault-injection tests (timeouts, 500s, 409s) and the "tool failure" demo scenario.
 
 **Check yourself**
 - When should the agent retry, ask the user, or stop?
