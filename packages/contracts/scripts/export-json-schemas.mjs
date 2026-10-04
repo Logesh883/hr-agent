@@ -3,6 +3,10 @@
  * (json-schema/api.json). `pnpm contracts:generate` then turns it into Pydantic
  * models in apps/ai/contracts/generated.py.
  *
+ * It also writes json-schema/rules.json: the business-rule constants the API
+ * enforces (leave entitlements, attendance cutoffs), so the AI service can check
+ * that policy documents agree with them (A4.6).
+ *
  * Every schema goes into one Zod registry, so a shape used in several places
  * (EmployeeRef, UserRef, …) becomes a single `$defs` entry referenced with
  * `$ref`, and a single Python class.
@@ -72,6 +76,8 @@ const responses = {
   PayrollRow: contracts.payrollRowSchema,
   PayrollChange: contracts.payrollChangeSchema,
   PayrollReport: contracts.payrollReportResponseSchema,
+  PolicyVersion: contracts.policyVersionSchema,
+  Policy: contracts.policySchema,
 };
 
 const registry = z.registry();
@@ -114,6 +120,13 @@ await writeFile(
   outputPath,
   `${JSON.stringify({ $schema: 'https://json-schema.org/draft/2020-12/schema', $defs: definitions }, null, 2)}\n`,
 );
+const rules = {
+  LEAVE_POLICY: contracts.LEAVE_POLICY,
+  LEAVE_RULES: contracts.LEAVE_RULES,
+  ATTENDANCE_RULES: contracts.ATTENDANCE_RULES,
+};
+await writeFile(join(dirname(outputPath), 'rules.json'), `${JSON.stringify(rules, null, 2)}\n`);
+
 console.log(
   `Exported ${Object.keys(requests).length} request/query and ${Object.keys(responses).length} response schemas to ${outputPath}`,
 );

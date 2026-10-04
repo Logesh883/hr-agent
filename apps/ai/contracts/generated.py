@@ -799,3 +799,38 @@ class PayrollReport(BaseModel):
     summary: Summary
     rows: list[PayrollRow]
     changes: list[PayrollChange]
+
+
+class PolicyVersion(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    id: UUID
+    version: Annotated[int, Field(ge=-9007199254740991, le=9007199254740991)]
+    effective_from: Annotated[date_aliased, Field(alias="effectiveFrom")]
+    file_name: Annotated[str, Field(alias="fileName")]
+    mime_type: Annotated[str, Field(alias="mimeType")]
+    size_bytes: Annotated[int, Field(alias="sizeBytes", ge=-9007199254740991, le=9007199254740991)]
+    summary: str | None
+    published_by: Annotated[UserRef, Field(alias="publishedBy")]
+    published_at: Annotated[AwareDatetime, Field(alias="publishedAt")]
+    state: Literal["CURRENT", "UPCOMING", "SUPERSEDED"]
+
+
+class Policy(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    title: str
+    category: Literal[
+        "LEAVE",
+        "ATTENDANCE",
+        "CONDUCT",
+        "ONBOARDING",
+        "BENEFITS",
+        "PAYROLL",
+        "IT_SECURITY",
+        "OTHER",
+    ]
+    current: PolicyVersion | None
+    versions: list[PolicyVersion]

@@ -90,6 +90,10 @@ const users: { email: string; name: string; role: Role; employee?: string }[] = 
   { email: 'hr@hr.local', name: 'Lakshmi Pillai', role: 'HR_OPS', employee: 'lakshmi.pillai' },
   { email: 'manager@hr.local', name: 'Rahul Sharma', role: 'MANAGER', employee: 'rahul.sharma' },
   { email: 'employee@hr.local', name: 'Sneha Patel', role: 'EMPLOYEE', employee: 'sneha.patel' },
+  // Service login for the AI service's policy ingestion (A4.2). Employee role: of what
+  // ingestion needs it has only `policy:read`, and with no employee record it has no
+  // personal data in scope.
+  { email: 'ai-ingest@hr.local', name: 'AI Policy Ingestion', role: 'EMPLOYEE' },
 ];
 
 /** Demo company calendar: fixed-date holidays only. */

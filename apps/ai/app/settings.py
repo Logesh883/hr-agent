@@ -64,6 +64,42 @@ class Settings(BaseSettings):
     langfuse_public_key: str = ""
     langfuse_secret_key: SecretStr | None = None
 
+    # Postgres for the AI service's own `ai` schema (policy chunks and their vectors). Empty
+    # means DATABASE_URL, the HR database: the AI service never touches its HR tables.
+    database_url: str = "postgresql://hr:hr@localhost:5433/hr"
+    ai_database_url: str = ""
+
+    # Embeddings for policy RAG (M4), from a hosted API. "gemini" uses Gemini's native
+    # embedContent API (task types: query vs document); "openai" is any OpenAI-compatible
+    # /embeddings endpoint (EMBEDDING_BASE_URL + EMBEDDING_API_KEY).
+    embedding_provider: Literal["gemini", "openai"] = "gemini"
+    embedding_model: str = "gemini-embedding-001"
+    # Must match the `vector(n)` column; changing it means a new migration and re-ingesting.
+    embedding_dimensions: int = 768
+    embedding_base_url: str = ""
+    # Falls back to GEMINI_API_KEY for the gemini provider.
+    embedding_api_key: SecretStr | None = None
+
+    # Least-privilege HR API login used to fetch policies for ingestion (EMPLOYEE role:
+    # `policy:read` and nothing that matters). Seeded as ai-ingest@hr.local.
+    ai_service_email: str = "ai-ingest@hr.local"
+    ai_service_password: SecretStr | None = None
+
+    # Target chunk size in (approximate) tokens. Retrieval only searches chunks made with
+    # the current size, so changing it means re-running `hr-ai ingest`.
+    rag_chunk_tokens: int = 256
+    # Rerank hybrid results with the LLM before answering (A4.3); costs one model call.
+    rag_rerank: bool = False
+
+    @property
+    def ai_db_url(self) -> str:
+        """SQLAlchemy URL for asyncpg; Prisma-only query parameters (`?schema=`) dropped."""
+        url = (self.ai_database_url or self.database_url).split("?", 1)[0]
+        for prefix in ("postgresql://", "postgres://"):
+            if url.startswith(prefix):
+                return "postgresql+asyncpg://" + url.removeprefix(prefix)
+        return url
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -6,10 +6,13 @@ from llm.types import Message, PromptRef
 from prompts import load_prompt
 from tools.base import ToolContext
 from tools.hr_read import READ_TOOLS
+from tools.policy import POLICY_TOOLS
 from tools.registry import ToolRegistry
 from tracing.trace import Trace
 
 READ_REGISTRY = ToolRegistry(READ_TOOLS)
+# With policy search configured (M4), the agent can also answer questions about the rules.
+ASK_REGISTRY = ToolRegistry([*READ_TOOLS, *POLICY_TOOLS])
 
 
 def build_ask_messages(question: str, ctx: ToolContext) -> tuple[list[Message], PromptRef]:
@@ -42,4 +45,5 @@ async def answer_question(
     messages, prompt = build_ask_messages(question, ctx)
     trace = trace or new_ask_trace(question, ctx)
     trace.metadata["prompt"] = str(prompt)
-    return await run_agent(llm, READ_REGISTRY, ctx, messages, trace=trace, prompt=prompt)
+    registry = ASK_REGISTRY if ctx.policies else READ_REGISTRY
+    return await run_agent(llm, registry, ctx, messages, trace=trace, prompt=prompt)

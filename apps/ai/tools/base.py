@@ -8,12 +8,15 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import date
 from enum import StrEnum
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import BaseModel, ConfigDict
 
 from app.hr_client import HrApiClient, SessionUser
 from llm.types import ToolSpec
+
+if TYPE_CHECKING:
+    from rag.retrieval import PolicyRetriever
 
 
 class Risk(StrEnum):
@@ -36,6 +39,9 @@ class ToolContext:
     hr: HrApiClient
     user: SessionUser
     today: date
+    # Policy search (M4); None when embeddings aren't configured, and then the agent isn't
+    # offered `search_policy` at all.
+    policies: "PolicyRetriever | None" = None
 
 
 class ToolError(Exception):

@@ -9,6 +9,7 @@ from app import agent_routes, llm_routes
 from app.log import configure_logging
 from app.settings import Settings, get_settings
 from llm.base import LLMClient
+from rag.service import close_policy_retriever
 from tracing.langfuse import TraceExporter, create_exporter
 
 router = APIRouter()
@@ -31,6 +32,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         await llm.aclose()
     exporter: TraceExporter = app.state.trace_exporter
     await exporter.aclose()
+    await close_policy_retriever(getattr(app.state, "policies", None))
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:

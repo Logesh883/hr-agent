@@ -53,8 +53,8 @@ Effort figures are rough "focused days" to guide pacing; the whole plan is about
 | Service | **FastAPI** in `apps/ai`, port 8000 | Async, typed (pydantic), fits the spec. |
 | Agent LLM | **Free hosted API** behind an OpenAI-compatible client. Candidates: Groq, Google Gemini (OpenAI-compatible endpoint), OpenRouter free models, Hugging Face Inference Providers | Reliable tool calling needs a capable model; free tiers give you one. Provider and model are env settings, so you can switch any time. |
 | Learning / offline LLM | **None: hosted models only** (decided in M1). A local `transformers` model is optional bonus B3 | Chosen over a local Qwen model to keep the laptop setup light. The free hosted APIs report token usage, so tokens, sampling and latency are still measured, just not tokenizers up close. |
-| Embeddings | Hugging Face **`sentence-transformers`**: `BAAI/bge-small-en-v1.5` (384 dimensions) | Free, local, good quality. Swapped for a lighter ONNX runtime at deploy time (M13). |
-| Reranker | Hugging Face cross-encoder `BAAI/bge-reranker-base` | Shows how much reranking helps (you'll measure it). |
+| Embeddings | **Hosted: Gemini `gemini-embedding-001`** at 768 dimensions (decided in M4), behind a provider-neutral `Embedder` (an OpenAI-compatible `/embeddings` client too) | Chosen over local `sentence-transformers` / ONNX to keep the laptop light and match the hosted-only LLM decision. Free tier; the policies are synthetic. Gemini's native API takes query vs document task types. |
+| Reranker | **LLM reranker** on the agent's hosted model (Groq), decided in M4 | No local cross-encoder. The LLM scores the hybrid top 20 against the question; A4.5 measures whether that's worth an extra call. |
 | Vector store | **pgvector** in the existing Postgres (the docker image already includes it), in a separate **`ai` schema** | No new infrastructure. The AI service owns the `ai` schema (Alembic migrations) and never writes HR tables. |
 | Orchestration | Hand-written loop first (M3), then **LangGraph** (M5) | Understand the mechanics before the abstraction. |
 | Acting on behalf of users | The agent **forwards the signed-in user's HR API token** to every tool call | RBAC, data scope, business rules and audit apply exactly as if the user clicked. The model never sees credentials or the database. |
@@ -249,20 +249,20 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 - RAG evaluation: recall@k, MRR, faithfulness.
 
 **Build**
-- [ ] A4.1 `ai` schema with Alembic. Tables:
+- [x] A4.1 `ai` schema with Alembic (`apps/ai/migrations/`, `rag/db.py`; pgvector installed into `ai`, so Prisma's `public` schema is untouched). Tables:
   - `policy_version`: policy id, title, version, effective date, content hash.
-  - `policy_chunk`: version, heading path, chunk index, content, token count, `vector(384)` embedding, `tsvector`.
+  - `policy_chunk`: version, chunker and size, heading path, chunk index, content, token count, embedding model, `vector(768)` embedding, generated `tsvector`.
   - An HNSW index on the embedding.
-- [ ] A4.2 Ingestion job (CLI + endpoint):
-  1. *(HR API)* Sign in with a least-privilege service login (Employee role, which only needs `policy:read`).
+- [ ] A4.2 Ingestion job (`rag/ingest.py`, `uv run hr-ai ingest`). Built and tested against Postgres with fake embeddings; still to do: the endpoint, and a live run once `GEMINI_API_KEY` is set:
+  1. *(HR API)* Sign in with a least-privilege service login (Employee role, which only needs `policy:read`). Seeded as `ai-ingest@hr.local`; `Policy`/`PolicyVersion` are now Zod contracts.
   2. Fetch `GET /policies` and each file, and parse it: Markdown now, PDF via `pypdf`, DOCX via `python-docx`.
-  3. Chunk by heading and embed with `bge-small`.
+  3. Chunk by heading (or fixed-size, for comparison) and embed with Gemini.
   4. Upsert idempotently by content hash, so only changed versions are re-embedded.
-- [ ] A4.3 Retrieval:
+- [ ] A4.3 Retrieval (`rag/store.py`, `rag/retrieval.py`, `uv run hr-ai search`). Built and tested; live quality pending embeddings:
   - **Vector search:** top-k with metadata filters; the version in force by default, or `as_of=<date>` for "what was the rule then".
   - **Keyword search:** Postgres full-text search.
-  - **Combine:** hybrid ranking with RRF, then an optional cross-encoder rerank.
-- [ ] A4.4 `search_policy` tool returning chunks with citations (title, version, section). The answer prompt must cite its sources and admit when the policy is silent.
+  - **Combine:** hybrid ranking with RRF, then an optional LLM rerank.
+- [ ] A4.4 `search_policy` tool returning chunks with citations (title, version, section). The answer prompt must cite its sources and admit when the policy is silent. (`tools/policy.py`, prompt `ask@3`; offered only when embeddings are configured. Live answers pending.)
 - [ ] A4.5 RAG eval: 25 questions with the expected source section (e.g. "Can unused leave carry over?" → Leave Policy v2 §1). Measure recall@5 and MRR for three chunk sizes, and for vector vs hybrid vs hybrid + rerank. Keep the results table in `docs/evaluation/`.
 - [ ] A4.6 Consistency test: RAG answers about entitlements and the late cutoff must match `LEAVE_POLICY` and `ATTENDANCE_RULES` in `@hr/contracts`. This catches the policy text drifting from the rules the code enforces.
 

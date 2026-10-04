@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isoDate, type UserRef } from './common.js';
+import { isoDate, isoDateTime, userRefSchema } from './common.js';
 
 export const POLICY_CATEGORIES = [
   'LEAVE',
@@ -39,25 +39,29 @@ export const publishPolicySchema = z.object({
 });
 export type PublishPolicyBody = z.output<typeof publishPolicySchema>;
 
-export interface PolicyVersion {
-  id: string;
-  version: number;
-  effectiveFrom: string;
-  fileName: string;
-  mimeType: string;
-  sizeBytes: number;
-  summary: string | null;
-  publishedBy: UserRef;
-  publishedAt: string;
-  /** CURRENT: in force today · UPCOMING: effective later · SUPERSEDED: replaced. */
-  state: 'CURRENT' | 'UPCOMING' | 'SUPERSEDED';
-}
+export const POLICY_VERSION_STATES = ['CURRENT', 'UPCOMING', 'SUPERSEDED'] as const;
 
-export interface Policy {
-  title: string;
-  category: PolicyCategory;
+export const policyVersionSchema = z.object({
+  id: z.uuid(),
+  version: z.number().int(),
+  effectiveFrom: isoDate,
+  fileName: z.string(),
+  mimeType: z.string(),
+  sizeBytes: z.number().int(),
+  summary: z.string().nullable(),
+  publishedBy: userRefSchema,
+  publishedAt: isoDateTime,
+  /** CURRENT: in force today · UPCOMING: effective later · SUPERSEDED: replaced. */
+  state: z.enum(POLICY_VERSION_STATES),
+});
+export type PolicyVersion = z.infer<typeof policyVersionSchema>;
+
+export const policySchema = z.object({
+  title: z.string(),
+  category: z.enum(POLICY_CATEGORIES),
   /** The version in force today (null if every version is still upcoming). */
-  current: PolicyVersion | null;
+  current: policyVersionSchema.nullable(),
   /** All versions, newest first. */
-  versions: PolicyVersion[];
-}
+  versions: z.array(policyVersionSchema),
+});
+export type Policy = z.infer<typeof policySchema>;

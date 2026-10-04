@@ -1,0 +1,29 @@
+{
+  "LEAVE_POLICY": {
+    "ANNUAL": {
+      "label": "Annual leave",
+      "daysPerYear": 18
+    },
+    "SICK": {
+      "label": "Sick leave",
+      "daysPerYear": 12
+    },
+    "CASUAL": {
+      "label": "Casual leave",
+      "daysPerYear": 6
+    },
+    "UNPAID": {
+      "label": "Unpaid leave",
+      "daysPerYear": null
+    }
+  },
+  "LEAVE_RULES": {
+    "maxBackdateDays": 30,
+    "maxSpanDays": 60
+  },
+  "ATTENDANCE_RULES": {
+    "lateAfter": "10:30",
+    "minHoursPresent": 6,
+    "minHoursHalfDay": 4
+  }
+}

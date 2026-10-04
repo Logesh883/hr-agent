@@ -6,6 +6,8 @@ uv run hr-ai models                    # model ids the configured provider offer
 uv run hr-ai parse "Approve Sneha's leave" --role MANAGER   # intent + entities
 uv run hr-ai parse "Approve Sneha's leave" --login manager@hr.local   # + tool-based lookups
 uv run hr-ai ask "How many annual leave days does Sneha have left?" --login hr@hr.local
+uv run hr-ai ingest                    # policies → chunks + embeddings (ai schema)
+uv run hr-ai search "Can unused leave carry over?" --mode vector   # retrieval only, no LLM
 """
 
 import argparse
@@ -33,6 +35,13 @@ from llm.base import LLMError
 from llm.factory import LLMConfigError, create_llm_client
 from llm.openai_compat import OpenAICompatibleClient
 from llm.types import StreamChunk
+from rag.chunking import Chunker
+from rag.db import create_engine
+from rag.embeddings import EmbeddingConfigError, EmbeddingError, create_embedder
+from rag.ingest import ingest_policies
+from rag.retrieval import MODES, Mode
+from rag.service import close_policy_retriever, create_policy_retriever
+from rag.store import PolicyStore
 from tools.base import ToolContext
 from tracing.langfuse import create_exporter
 
@@ -79,8 +88,25 @@ def main(argv: list[str] | None = None) -> None:
     ask.add_argument("--model", help="override LLM_MODEL")
     ask.add_argument("--quiet", action="store_true", help="print the answer only, not the steps")
 
+    ingest = commands.add_parser(
+        "ingest", help="index HR policies for search (as AI_SERVICE_EMAIL; idempotent)"
+    )
+    ingest.add_argument("--chunker", choices=["heading", "fixed"], default="heading")
+    ingest.add_argument("--size", type=int, help="target chunk tokens; default RAG_CHUNK_TOKENS")
+
+    search = commands.add_parser("search", help="search indexed policies (retrieval only)")
+    search.add_argument("query")
+    search.add_argument("--mode", choices=MODES, default="hybrid")
+    search.add_argument("--as-of", type=date.fromisoformat, help="rules in force on this date")
+    search.add_argument("--size", type=int, help="chunk size to search; default RAG_CHUNK_TOKENS")
+    search.add_argument("-k", type=int, default=5)
+
     args = parser.parse_args(argv)
-    if args.command == "serve":
+    if args.command == "ingest":
+        sys.exit(asyncio.run(_ingest(args.chunker, args.size)))
+    elif args.command == "search":
+        sys.exit(asyncio.run(_search(args)))
+    elif args.command == "serve":
         _serve(reload=args.reload)
     elif args.command == "parse":
         sys.exit(asyncio.run(_parse(args)))
@@ -229,6 +255,9 @@ async def _ask(args: argparse.Namespace) -> int:
         print(error, file=sys.stderr)
         return 2
     exporter = create_exporter(settings)
+    policies = create_policy_retriever(settings, llm=llm)
+    if policies is None:
+        print("(policy search off: no embeddings configured)", file=sys.stderr)
     async with httpx.AsyncClient(
         base_url=settings.hr_api_url, timeout=settings.hr_api_timeout
     ) as http:
@@ -242,6 +271,7 @@ async def _ask(args: argparse.Namespace) -> int:
                 hr=HrApiClient(http, login.access_token),
                 user=login.user,
                 today=args.today or date.today(),
+                policies=policies,
             )
             trace = new_ask_trace(args.question, ctx)
             run = await answer_question(llm, ctx, args.question, trace=trace)
@@ -255,6 +285,85 @@ async def _ask(args: argparse.Namespace) -> int:
         finally:
             await llm.aclose()
             await exporter.aclose()
+            await close_policy_retriever(policies)
+    return 0
+
+
+async def _ingest(chunker: Chunker, size: int | None) -> int:
+    settings = get_settings()
+    configure_logging(settings.log_level)
+    if settings.ai_service_password is None:
+        print("Set AI_SERVICE_PASSWORD (the ingestion login's password) in .env", file=sys.stderr)
+        return 2
+    try:
+        embedder = create_embedder(settings)
+    except EmbeddingConfigError as error:
+        print(error, file=sys.stderr)
+        return 2
+    store = PolicyStore(create_engine(settings.ai_db_url))
+    async with httpx.AsyncClient(
+        base_url=settings.hr_api_url, timeout=settings.hr_api_timeout
+    ) as http:
+        try:
+            login = await HrApiClient(http).login(
+                settings.ai_service_email, settings.ai_service_password.get_secret_value()
+            )
+            report = await ingest_policies(
+                HrApiClient(http, login.access_token),
+                store,
+                embedder,
+                chunker=chunker,
+                chunk_size=size or settings.rag_chunk_tokens,
+            )
+        except (EmbeddingError, HrApiError, HrApiUnavailableError) as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
+        finally:
+            await embedder.aclose()
+            await store.aclose()
+    print(
+        f"{report.versions} policy versions ({report.chunker}, {report.chunk_size} tokens, "
+        f"{report.embedding_model}): {report.embedded} embedded into {report.chunks} chunks, "
+        f"{report.unchanged} unchanged, {report.removed} removed"
+    )
+    for failure in report.failed:
+        print(f"  not indexed: {failure}", file=sys.stderr)
+    return 1 if report.failed else 0
+
+
+async def _search(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    if args.size:
+        settings = settings.model_copy(update={"rag_chunk_tokens": args.size})
+    configure_logging(settings.log_level)
+    mode = cast(Mode, args.mode)
+    llm = None
+    if mode == "rerank":
+        try:
+            llm = create_llm_client(settings)
+        except LLMConfigError as error:
+            print(error, file=sys.stderr)
+            return 2
+    retriever = create_policy_retriever(settings, llm=llm)
+    if retriever is None:
+        print("Policy search needs embeddings: set GEMINI_API_KEY (see .env.example)")
+        return 2
+    try:
+        scope = retriever.scope(args.as_of or date.today(), include_upcoming=args.as_of is None)
+        hits = await retriever.search(args.query, scope, k=args.k, mode=mode)
+    except EmbeddingError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 1
+    finally:
+        await close_policy_retriever(retriever)
+        if llm:
+            await llm.aclose()
+    if not hits:
+        print("no matches (has `hr-ai ingest` run for this chunk size?)")
+    for rank, hit in enumerate(hits, start=1):
+        flag = " (upcoming)" if hit.upcoming else ""
+        print(f"{rank}. [{hit.score:.4f}] {hit.citation}{flag}")
+        print("   " + hit.content.replace("\n", "\n   "))
     return 0
 
 

@@ -173,6 +173,17 @@ class HrApiClient:
             raise HrApiError.from_response(response)
         return response.json() if response.content else None
 
+    async def download(self, path: str) -> tuple[bytes, str]:
+        """A file endpoint's body and Content-Type."""
+        headers = {"Authorization": f"Bearer {self._token}"} if self._token else {}
+        try:
+            response = await self._http.get(path, headers=headers)
+        except httpx.TransportError as error:
+            raise HrApiUnavailableError(f"HR API unreachable: {error!r}") from error
+        if response.is_error:
+            raise HrApiError.from_response(response)
+        return response.content, response.headers.get("content-type", "")
+
     async def get(self, path: str, *, params: dict[str, Any] | None = None) -> Any:
         return await self.request("GET", path, params=params)
 

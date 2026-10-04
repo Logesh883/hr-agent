@@ -2236,6 +2236,113 @@
         "rows",
         "changes"
       ]
+    },
+    "PolicyVersion": {
+      "title": "PolicyVersion",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "effectiveFrom": {
+          "type": "string",
+          "format": "date"
+        },
+        "fileName": {
+          "type": "string"
+        },
+        "mimeType": {
+          "type": "string"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "publishedBy": {
+          "$ref": "#/$defs/UserRef"
+        },
+        "publishedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "state": {
+          "type": "string",
+          "enum": [
+            "CURRENT",
+            "UPCOMING",
+            "SUPERSEDED"
+          ]
+        }
+      },
+      "required": [
+        "id",
+        "version",
+        "effectiveFrom",
+        "fileName",
+        "mimeType",
+        "sizeBytes",
+        "summary",
+        "publishedBy",
+        "publishedAt",
+        "state"
+      ]
+    },
+    "Policy": {
+      "title": "Policy",
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "LEAVE",
+            "ATTENDANCE",
+            "CONDUCT",
+            "ONBOARDING",
+            "BENEFITS",
+            "PAYROLL",
+            "IT_SECURITY",
+            "OTHER"
+          ]
+        },
+        "current": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PolicyVersion"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "versions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PolicyVersion"
+          }
+        }
+      },
+      "required": [
+        "title",
+        "category",
+        "current",
+        "versions"
+      ]
     }
   }
 }

@@ -17,6 +17,7 @@
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
     "db:migrate": "pnpm --filter @hr/db migrate",
+    "db:migrate:ai": "pnpm --filter ai migrate",
     "db:seed": "pnpm --filter @hr/db seed",
     "db:reset": "pnpm --filter @hr/db reset",
     "db:studio": "pnpm --filter @hr/db studio"

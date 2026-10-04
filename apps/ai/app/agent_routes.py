@@ -18,6 +18,8 @@ from intent.prompt import Role
 from intent.schema import Entities, EntityField, Intent
 from llm.base import LLMClient, LLMError
 from llm.types import Usage
+from rag.retrieval import PolicyRetriever
+from rag.service import create_policy_retriever
 from tools.base import ToolContext
 from tracing.langfuse import TraceExporter
 
@@ -123,7 +125,12 @@ async def ask(
         base_url=settings.hr_api_url, timeout=settings.hr_api_timeout
     ) as http:
         hr = HrApiClient(http, token)
-        ctx = ToolContext(hr=hr, user=await _signed_in_user(hr), today=date.today())
+        ctx = ToolContext(
+            hr=hr,
+            user=await _signed_in_user(hr),
+            today=date.today(),
+            policies=get_policy_retriever(request, llm),
+        )
         trace = new_ask_trace(body.question, ctx)
         try:
             run = await answer_question(llm, ctx, body.question, trace=trace)
@@ -142,6 +149,15 @@ async def ask(
         usage=run.usage,
         trace_id=run.trace_id,
     )
+
+
+def get_policy_retriever(request: Request, llm: LLMClient) -> PolicyRetriever | None:
+    """The app's shared retriever, built on first use; None without embedding settings."""
+    state = request.app.state
+    if not getattr(state, "policies_checked", False):
+        state.policies = create_policy_retriever(state.settings, llm=llm)
+        state.policies_checked = True
+    return state.policies
 
 
 async def _signed_in_user(hr: HrApiClient) -> SessionUser:
