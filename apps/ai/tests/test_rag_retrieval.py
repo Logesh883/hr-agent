@@ -25,6 +25,7 @@ from rag.retrieval import (
 from rag.store import PolicyHit, PolicyStore, SearchScope
 from tests.hr_data import BASE_URL, calls, session_user, tool_call
 from tools.base import ToolContext
+from tools.permissions import role_permissions
 
 TODAY = date(2026, 10, 4)
 
@@ -145,7 +146,8 @@ def test_hit_payload_carries_the_citation_and_flags_upcoming_versions() -> None:
         "version": 2,
         "effective_from": "2026-01-01",
         "section": "1. Entitlements",
-        "text": "chunk 1",
+        # Untrusted text, fenced as data (A8.2).
+        "text": '<data source="policy: Leave Policy v2 §1 Entitlements">\nchunk 1\n</data>',
     }
     assert upcoming["citation"] == "Hybrid Work Policy v1"
     assert upcoming["section"] is None
@@ -223,5 +225,6 @@ async def test_the_agent_is_offered_search_policy_only_when_it_works(
 
     assert run.answer.endswith("[Leave Policy v2 §1 Entitlements].")
     assert "search_policy" in [t["function"]["name"] for t in with_rag.calls[0].tools or []]
-    assert without.calls[0].tools == READ_REGISTRY.specs()
+    employee_tools = READ_REGISTRY.for_permissions(role_permissions()["EMPLOYEE"])
+    assert without.calls[0].tools == employee_tools.specs()
     assert "search_policy" in (with_rag.calls[0].messages[0].content or "")

@@ -2,10 +2,17 @@
 must retry what's worth retrying, stop on what isn't, never build on a write it can't
 confirm, undo only what's safe to undo, and say plainly what happened to every step.
 
-The scenario: "Book Sneha annual leave on October 12-13 and make Arun her manager."
-  s1 search Sneha, s2 search Arun, s3 create_leave_request, s4 change_manager.
-The leave request is low risk and the manager change medium; medium approval is switched
-off here so the failures, not the approvals, are what's tested (approvals: M6 tests).
+Two single-intent scenarios (a plan may only make the changes its request asks for, A8.2):
+
+- Leave: "Book Sneha annual leave 2026-10-12 to 2026-10-13 and 2026-11-02 to 2026-11-03."
+  s1 search Sneha, s2 and s3 create_leave_request. Low risk, and safe to undo: a failure
+  of s3 cancels s2.
+- Manager: "Make Arun Sneha's manager and change her location to Pune."
+  s1 search Sneha, s2 search Arun, s3 change_manager, s4 update_employee. Not undoable:
+  a failure of s4 leaves s3 in place and says so.
+
+Medium approval is switched off so the failures, not the approvals, are what's tested
+(approvals: M6 tests). Retries run without waiting.
 """
 
 import json
@@ -46,39 +53,59 @@ from tools.hr_write import WRITE_TOOLS
 from tools.registry import ToolRegistry, error_kind
 from tracing.trace import Trace
 
-REQUEST = "Book Sneha annual leave on October 12-13 and make Arun her manager."
-PARSE = parse(
+SECOND_LEAVE_ID = "5c0b1f8e-0000-4000-8000-0000000000a2"
+
+
+def with_write_risk(plan: str, *write_steps: str) -> str:
+    draft = json.loads(plan)
+    steps = [s | {"risk": "write"} if s["id"] in write_steps else s for s in draft["steps"]]
+    return json.dumps(draft | {"steps": steps})
+
+
+def leave_args(start: str, end: str) -> dict[str, Any]:
+    return {
+        "employee_id": "$s1.employees.0.id",
+        "leave_type": "ANNUAL",
+        "start_date": start,
+        "end_date": end,
+    }
+
+
+LEAVE_REQUEST = "Book Sneha annual leave 2026-10-12 to 2026-10-13 and 2026-11-02 to 2026-11-03."
+LEAVE_PARSE = parse(
     "request_leave",
-    people=["Sneha", "Arun"],
+    people=["Sneha"],
     leave_type="ANNUAL",
     start_date="2026-10-12",
     end_date="2026-10-13",
 )
-_DRAFT = json.loads(
+LEAVE_PLAN = with_write_risk(
+    plan_json(
+        ("s1", "search_employee", {"query": "Sneha"}),
+        ("s2", "create_leave_request", leave_args("2026-10-12", "2026-10-13")),
+        ("s3", "create_leave_request", leave_args("2026-11-02", "2026-11-03")),
+        goal="Book Sneha's two leaves",
+    ),
+    "s2",
+    "s3",
+)
+
+MANAGER_REQUEST = "Make Arun Sneha's manager and change her location to Pune."
+MANAGER_PARSE = parse("update_employee", people=["Sneha", "Arun"], manager="Arun", location="Pune")
+MANAGER_PLAN = with_write_risk(
     plan_json(
         ("s1", "search_employee", {"query": "Sneha"}),
         ("s2", "search_employee", {"query": "Arun"}),
         (
             "s3",
-            "create_leave_request",
-            {
-                "employee_id": "$s1.employees.0.id",
-                "leave_type": "ANNUAL",
-                "start_date": "2026-10-12",
-                "end_date": "2026-10-13",
-            },
-        ),
-        (
-            "s4",
             "change_manager",
             {"employee_id": "$s1.employees.0.id", "manager_id": "$s2.employees.0.id"},
         ),
-        goal="Book Sneha's leave and move her to Arun",
-    )
-)
-PLAN = json.dumps(
-    _DRAFT
-    | {"steps": [s | {"risk": "write"} if s["id"] in ("s3", "s4") else s for s in _DRAFT["steps"]]}
+        ("s4", "update_employee", {"employee_id": "$s1.employees.0.id", "location": "Pune"}),
+        goal="Move Sneha to Arun and to Pune",
+    ),
+    "s3",
+    "s4",
 )
 
 
@@ -102,6 +129,7 @@ def leave(status: str = "PENDING", **overrides: Any) -> dict[str, Any]:
     } | overrides
 
 
+SECOND_LEAVE = leave(id=SECOND_LEAVE_ID, startDate="2026-11-02", endDate="2026-11-03")
 PREVIEW: dict[str, Any] = {
     "workingDays": 2,
     "nonWorkingDays": [],
@@ -116,11 +144,45 @@ PREVIEW: dict[str, Any] = {
     "balanceAfter": 7,
     "problems": [],
 }
-SNEHA_UNDER_ARUN = SNEHA | {"manager": ARUN_REF, "version": 2}
+STALE = "Employee was changed by someone else. Reload and try again."
 
 
 def error(status: int, message: str, **extra: Any) -> httpx.Response:
     return httpx.Response(status, json={"statusCode": status, "message": message} | extra)
+
+
+class SnehaRecord:
+    """Sneha's employee record as the HR API keeps it: PATCH applies the change and bumps
+    the version, GET returns what's stored. Tests make it misbehave."""
+
+    def __init__(self) -> None:
+        self.record: dict[str, Any] = dict(SNEHA)
+        # Answers to give instead of applying a PATCH, in order (then normal again).
+        self.refusals: list[httpx.Response] = []
+        # Set before a refusal: someone else saved meanwhile.
+        self.saved_by_someone_else = False
+        self.manager_sticks = True
+        self.refuse_location: httpx.Response | None = None
+
+    def get(self, request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json=self.record)
+
+    def patch(self, request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        if "location" in body and self.refuse_location is not None:
+            return self.refuse_location
+        if self.refusals:
+            if self.saved_by_someone_else:
+                self.record["version"] = 5
+            return self.refusals.pop(0)
+        if body.get("version") != self.record["version"]:
+            return error(409, STALE)
+        if "managerId" in body and self.manager_sticks:
+            self.record["manager"] = ARUN_REF
+        if "location" in body:
+            self.record["location"] = body["location"]
+        self.record["version"] += 1
+        return httpx.Response(200, json=self.record)
 
 
 @pytest.fixture
@@ -130,24 +192,30 @@ async def http() -> AsyncIterator[httpx.AsyncClient]:
 
 
 @pytest.fixture
-def hr_api() -> Iterator[respx.MockRouter]:
+def sneha() -> SnehaRecord:
+    return SnehaRecord()
+
+
+@pytest.fixture
+def hr_api(sneha: SnehaRecord) -> Iterator[respx.MockRouter]:
     """Everything works; each test breaks one thing."""
     with respx.mock(base_url=BASE_URL, assert_all_called=False) as api:
         api.get("/employees", params={"q": "Sneha"}).respond(json=page(SNEHA))
         api.get("/employees", params={"q": "Arun"}).respond(json=page(ARUN))
-        api.post("/leave-requests/preview", name="preview").respond(json=PREVIEW)
-        api.post("/leave-requests", name="create_leave").respond(201, json=leave())
-        api.get(f"/leave-requests/{LEAVE_ID}", name="read_leave").respond(json=leave())
+        api.post("/leave-requests/preview").respond(json=PREVIEW)
+        api.post("/leave-requests", json__startDate="2026-10-12", name="create_first").respond(
+            201, json=leave()
+        )
+        api.post("/leave-requests", json__startDate="2026-11-02", name="create_second").respond(
+            201, json=SECOND_LEAVE
+        )
+        api.get(f"/leave-requests/{LEAVE_ID}", name="read_first").respond(json=leave())
+        api.get(f"/leave-requests/{SECOND_LEAVE_ID}").respond(json=SECOND_LEAVE)
         api.post(f"/leave-requests/{LEAVE_ID}/cancel", name="cancel").respond(
             201, json=leave("CANCELLED")
         )
-        api.get(f"/employees/{SNEHA_ID}", name="read_sneha").mock(
-            side_effect=[
-                httpx.Response(200, json=SNEHA),
-                httpx.Response(200, json=SNEHA_UNDER_ARUN),
-            ]
-        )
-        api.patch(f"/employees/{SNEHA_ID}", name="patch_sneha").respond(json=SNEHA_UNDER_ARUN)
+        api.get(f"/employees/{SNEHA_ID}").mock(side_effect=sneha.get)
+        api.patch(f"/employees/{SNEHA_ID}").mock(side_effect=sneha.patch)
         yield api
 
 
@@ -177,16 +245,33 @@ def sent(api: respx.MockRouter, method: str, path: str) -> list[httpx.Request]:
 
 
 async def run(
-    graph: HrGraph, http: httpx.AsyncClient, events: Events | None = None, answer: Any = "Done."
+    graph: HrGraph,
+    http: httpx.AsyncClient,
+    events: Events | None = None,
+    answer: Any = "Done.",
+    *,
+    scenario: str = "leave",
 ) -> tuple[RunOutcome, FakeLLM]:
-    llm = FakeLLM([PARSE, PLAN, answer])
-    outcome = await start_run(graph, "faults", REQUEST, context(http, llm), events or Events())
-    assert outcome.status == "completed"
+    request, parsed, plan = (
+        (LEAVE_REQUEST, LEAVE_PARSE, LEAVE_PLAN)
+        if scenario == "leave"
+        else (MANAGER_REQUEST, MANAGER_PARSE, MANAGER_PLAN)
+    )
+    llm = FakeLLM([parsed, plan, answer])
+    outcome = await start_run(graph, scenario, request, context(http, llm), events or Events())
+    assert outcome.status == "completed", outcome.question
     return outcome, llm
 
 
 def summary(outcome: RunOutcome) -> dict[str, dict[str, Any]]:
     return {line["step"]: line for line in outcome.values["summary"]}
+
+
+def statuses(outcome: RunOutcome) -> dict[str, str]:
+    return {step: line["status"] for step, line in summary(outcome).items()}
+
+
+# ---- leave: everything works ---------------------------------------------------------------
 
 
 async def test_everything_works_and_every_write_is_checked(
@@ -195,9 +280,8 @@ async def test_everything_works_and_every_write_is_checked(
     events = Events()
     outcome, _ = await run(graph, http, events)
 
-    results = outcome.values["results"]
-    assert results["s3"]["status"] == "verified" and results["s4"]["status"] == "verified"
-    assert [e["step"] for e in events.items if e["event"] == "verified"] == ["s3", "s4"]
+    assert statuses(outcome) == {"s1": "done", "s2": "verified", "s3": "verified"}
+    assert [e["step"] for e in events.items if e["event"] == "verified"] == ["s2", "s3"]
     assert outcome.values["verification"]["problems"] == []
     assert not hr_api["cancel"].called
 
@@ -208,7 +292,7 @@ async def test_everything_works_and_every_write_is_checked(
 async def test_a_500_is_retried_with_the_same_idempotency_key(
     http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter
 ) -> None:
-    hr_api["create_leave"].mock(
+    hr_api["create_first"].mock(
         side_effect=[
             error(500, "Internal server error"),
             error(503, "Service unavailable"),
@@ -220,14 +304,14 @@ async def test_a_500_is_retried_with_the_same_idempotency_key(
     outcome, _ = await run(graph, http, events)
 
     attempts = sent(hr_api, "POST", "/leave-requests")
-    assert len(attempts) == 3
-    assert len({r.headers["idempotency-key"] for r in attempts}) == 1  # can't book twice
+    assert len(attempts) == 4  # three tries at the first leave, then the second
+    keys = {r.headers["idempotency-key"] for r in attempts[:3]}
+    assert len(keys) == 1  # one key for every try: it can't be booked twice
     assert [e["error"] for e in events.items if e["event"] == "tool_retry"] == [
         "The HR system refused the request (500): Internal server error.",
         "The HR system refused the request (503): Service unavailable.",
     ]
-    assert outcome.values["results"]["s3"]["status"] == "verified"
-    assert outcome.values["results"]["s4"]["status"] == "verified"
+    assert statuses(outcome) == {"s1": "done", "s2": "verified", "s3": "verified"}
 
 
 async def test_a_lost_response_is_retried_and_the_api_replays_the_first_answer(
@@ -235,7 +319,7 @@ async def test_a_lost_response_is_retried_and_the_api_replays_the_first_answer(
 ) -> None:
     # The request reached the API, the answer didn't come back; the retry finds the first
     # attempt still running (409 busy), then gets its stored 201: one leave request.
-    hr_api["create_leave"].mock(
+    hr_api["create_first"].mock(
         side_effect=[
             httpx.ReadTimeout("timed out"),
             error(409, "A request with this Idempotency-Key is still in progress. Retry shortly."),
@@ -245,26 +329,24 @@ async def test_a_lost_response_is_retried_and_the_api_replays_the_first_answer(
 
     outcome, _ = await run(graph, http)
 
-    assert len(sent(hr_api, "POST", "/leave-requests")) == 3
-    assert outcome.values["results"]["s3"]["status"] == "verified"
+    assert hr_api["create_first"].call_count == 3
+    assert outcome.values["results"]["s2"]["status"] == "verified"
 
 
 async def test_retries_give_up_after_three_and_nothing_after_runs(
     http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter
 ) -> None:
-    hr_api["create_leave"].respond(500, json={"statusCode": 500, "message": "Database down"})
+    hr_api["create_first"].respond(500, json={"statusCode": 500, "message": "Database down"})
 
     outcome, llm = await run(graph, http)
 
-    assert len(sent(hr_api, "POST", "/leave-requests")) == 4  # first try + 3 retries
+    assert hr_api["create_first"].call_count == 4  # first try + 3 retries
     assert outcome.values["stopped_kind"] == "failed"
-    assert outcome.values["results"]["s3"]["error_kind"] == "server"
-    assert sent(hr_api, "PATCH", f"/employees/{SNEHA_ID}") == []
-    lines = summary(outcome)
-    assert lines["s3"]["status"] == "failed"
-    assert lines["s4"]["status"] == "not run"
+    assert outcome.values["results"]["s2"]["error_kind"] == "server"
+    assert not hr_api["create_second"].called
+    assert statuses(outcome) == {"s1": "done", "s2": "failed", "s3": "not run"}
     respond_prompt = llm.calls[-1].messages[1].content or ""
-    assert "s4 change_manager: not run" in respond_prompt
+    assert "s3 create_leave_request: not run" in respond_prompt
 
 
 # ---- final failures: not retried --------------------------------------------------------
@@ -273,7 +355,7 @@ async def test_retries_give_up_after_three_and_nothing_after_runs(
 async def test_a_422_is_not_retried_and_its_problems_are_relayed_word_for_word(
     http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter
 ) -> None:
-    hr_api["create_leave"].mock(
+    hr_api["create_first"].mock(
         return_value=error(
             422,
             "Leave request breaks the rules",
@@ -285,74 +367,35 @@ async def test_a_422_is_not_retried_and_its_problems_are_relayed_word_for_word(
 
     outcome, llm = await run(graph, http)
 
-    assert len(sent(hr_api, "POST", "/leave-requests")) == 1
-    result = outcome.values["results"]["s3"]
+    assert hr_api["create_first"].call_count == 1
+    result = outcome.values["results"]["s2"]
     assert result["error_kind"] == "rule"
     assert "Overlaps with leave already booked on 2026-10-12" in result["error"]
     assert "Overlaps with leave already booked on 2026-10-12" in (
         llm.calls[-1].messages[1].content or ""
     )
-    assert sent(hr_api, "PATCH", f"/employees/{SNEHA_ID}") == []
+    assert not hr_api["create_second"].called
 
 
 async def test_a_403_stops_and_the_leave_this_run_created_is_cancelled(
     http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter
 ) -> None:
-    hr_api["patch_sneha"].mock(
-        return_value=error(403, "Missing permission employee.update", code="FORBIDDEN")
+    hr_api["create_second"].mock(
+        return_value=error(403, "Missing permission leave:request", code="FORBIDDEN")
     )
     events = Events()
 
     outcome, _ = await run(graph, http, events)
 
-    assert len(sent(hr_api, "PATCH", f"/employees/{SNEHA_ID}")) == 1  # not retried
+    assert hr_api["create_second"].call_count == 1  # not retried
     results = outcome.values["results"]
-    assert results["s4"]["error_kind"] == "forbidden"
-    # The leave request was ours and still pending: safe to cancel, so it is.
+    assert results["s3"]["error_kind"] == "forbidden"
+    # The first leave request was ours and still pending: safe to cancel, so it is.
     (cancel,) = sent(hr_api, "POST", f"/leave-requests/{LEAVE_ID}/cancel")
-    assert cancel.headers["idempotency-key"].endswith(":s3:undo")
-    assert results["s3"]["status"] == "compensated"
-    lines = summary(outcome)
-    assert lines["s3"]["detail"] == "cancelled the leave request this run created"
-    assert lines["s4"]["status"] == "failed"
+    assert cancel.headers["idempotency-key"].endswith(":s2:undo")
+    assert statuses(outcome) == {"s1": "done", "s2": "compensated", "s3": "failed"}
+    assert summary(outcome)["s2"]["detail"] == "cancelled the leave request this run created"
     assert "compensated" in events.kinds()
-
-
-async def test_a_stale_version_is_re_read_and_retried_once(
-    http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter
-) -> None:
-    stale = "Employee was changed by someone else. Reload and try again."
-    hr_api["read_sneha"].mock(
-        side_effect=[
-            httpx.Response(200, json=SNEHA),  # version 1
-            httpx.Response(200, json=SNEHA | {"version": 5}),  # someone else saved meanwhile
-            httpx.Response(200, json=SNEHA_UNDER_ARUN),  # the read-back
-        ]
-    )
-    hr_api["patch_sneha"].mock(
-        side_effect=[error(409, stale), httpx.Response(200, json=SNEHA_UNDER_ARUN)]
-    )
-
-    outcome, _ = await run(graph, http)
-
-    first, second = sent(hr_api, "PATCH", f"/employees/{SNEHA_ID}")
-    assert json.loads(first.content)["version"] == 1
-    assert json.loads(second.content)["version"] == 5
-    assert second.headers["idempotency-key"] == first.headers["idempotency-key"] + ":r1"
-    assert outcome.values["results"]["s4"]["status"] == "verified"
-
-
-async def test_a_second_stale_version_is_reported_not_retried_forever(
-    http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter
-) -> None:
-    stale = "Employee was changed by someone else. Reload and try again."
-    hr_api["read_sneha"].mock(return_value=httpx.Response(200, json=SNEHA))
-    hr_api["patch_sneha"].mock(return_value=error(409, stale))
-
-    outcome, _ = await run(graph, http)
-
-    assert len(sent(hr_api, "PATCH", f"/employees/{SNEHA_ID}")) == 2
-    assert outcome.values["results"]["s4"]["error_kind"] == "conflict"
 
 
 async def test_a_duplicate_that_isnt_ours_is_not_treated_as_done(
@@ -360,12 +403,12 @@ async def test_a_duplicate_that_isnt_ours_is_not_treated_as_done(
 ) -> None:
     # "409 duplicate: treat as done *if the key matches*." A matching key is replayed by
     # the API as the first answer (above); a real duplicate is someone else's record.
-    hr_api["create_leave"].mock(return_value=error(409, "Overlaps an existing leave request"))
+    hr_api["create_first"].mock(return_value=error(409, "Overlaps an existing leave request"))
 
     outcome, _ = await run(graph, http)
 
-    assert len(sent(hr_api, "POST", "/leave-requests")) == 1
-    assert outcome.values["results"]["s3"]["status"] == "failed"
+    assert hr_api["create_first"].call_count == 1
+    assert outcome.values["results"]["s2"]["status"] == "failed"
     assert outcome.values["stopped_kind"] == "failed"
 
 
@@ -376,46 +419,28 @@ async def test_a_write_that_doesnt_check_out_stops_every_later_write(
     http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter
 ) -> None:
     # 201, but reading it back shows other dates: the run can't build on that.
-    hr_api["read_leave"].respond(json=leave(endDate="2026-10-16", days=5))
-    events = Events()
+    hr_api["read_first"].respond(json=leave(endDate="2026-10-16", days=5))
 
-    outcome, _ = await run(graph, http, events)
+    outcome, _ = await run(graph, http)
 
-    s3 = outcome.values["results"]["s3"]
-    assert s3["verification"] == {
+    s2 = outcome.values["results"]["s2"]
+    assert s2["verification"] == {
         "ok": False,
         "mismatches": ["end_date is '2026-10-16', expected '2026-10-13'"],
     }
     assert outcome.values["stopped_kind"] == "mismatch"
-    assert sent(hr_api, "PATCH", f"/employees/{SNEHA_ID}") == []
+    assert not hr_api["create_second"].called
     # Still pending and ours, so the wrong request is cancelled rather than left behind.
-    assert hr_api["cancel"].called and s3["status"] == "compensated"
-    assert summary(outcome)["s4"]["status"] == "not run"
-
-
-async def test_a_manager_change_that_didnt_stick_is_a_problem(
-    http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter
-) -> None:
-    hr_api["read_sneha"].mock(return_value=httpx.Response(200, json=SNEHA))  # still Rahul
-
-    outcome, _ = await run(graph, http)
-
-    s4 = outcome.values["results"]["s4"]
-    assert s4["status"] == "mismatch"
-    assert s4["verification"]["mismatches"][0].startswith("manager_id is ")
-    (problem,) = outcome.values["verification"]["problems"]
-    assert problem.startswith("s4 (change_manager) ran but didn't check out")
-    # The leave request was fine, but the run as a whole failed after it: ours and pending,
-    # so it's cancelled; nothing is left half-done without being said.
-    assert outcome.values["results"]["s3"]["status"] == "compensated"
+    assert hr_api["cancel"].called
+    assert statuses(outcome) == {"s1": "done", "s2": "compensated", "s3": "not run"}
 
 
 async def test_what_cant_be_undone_safely_is_left_and_said(
     http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter
 ) -> None:
-    hr_api["patch_sneha"].mock(return_value=error(403, "Missing permission employee.update"))
-    # A manager approved the leave in the meantime: it's no longer ours to cancel.
-    hr_api["read_leave"].mock(
+    hr_api["create_second"].mock(return_value=error(403, "Missing permission leave:request"))
+    # A manager approved the first leave in the meantime: it's no longer ours to cancel.
+    hr_api["read_first"].mock(
         side_effect=[
             httpx.Response(200, json=leave()),  # the read-back right after creating it
             httpx.Response(200, json=leave("APPROVED")),  # by the time we'd undo it
@@ -425,25 +450,78 @@ async def test_what_cant_be_undone_safely_is_left_and_said(
     outcome, _ = await run(graph, http)
 
     assert not hr_api["cancel"].called
+    s2 = outcome.values["results"]["s2"]
+    assert s2["status"] == "verified"
+    assert s2["compensation"] == "not undone: left as is: it's approved now"
+
+
+# ---- manager: version conflicts and changes that can't be undone ---------------------------
+
+
+async def test_the_manager_scenario_works_and_both_changes_are_checked(
+    http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter, sneha: SnehaRecord
+) -> None:
+    outcome, _ = await run(graph, http, scenario="manager")
+
+    assert statuses(outcome) == {"s1": "done", "s2": "done", "s3": "verified", "s4": "verified"}
+    assert sneha.record["manager"] == ARUN_REF and sneha.record["location"] == "Pune"
+
+
+async def test_a_stale_version_is_re_read_and_retried_once(
+    http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter, sneha: SnehaRecord
+) -> None:
+    sneha.refusals = [error(409, STALE)]
+    sneha.saved_by_someone_else = True
+
+    outcome, _ = await run(graph, http, scenario="manager")
+
+    first, second, _location = sent(hr_api, "PATCH", f"/employees/{SNEHA_ID}")
+    assert json.loads(first.content)["version"] == 1
+    assert json.loads(second.content)["version"] == 5
+    assert second.headers["idempotency-key"] == first.headers["idempotency-key"] + ":r1"
+    assert outcome.values["results"]["s3"]["status"] == "verified"
+
+
+async def test_a_second_stale_version_is_reported_not_retried_forever(
+    http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter, sneha: SnehaRecord
+) -> None:
+    sneha.refusals = [error(409, STALE), error(409, STALE)]
+
+    outcome, _ = await run(graph, http, scenario="manager")
+
+    assert len(sent(hr_api, "PATCH", f"/employees/{SNEHA_ID}")) == 2  # s4 never sent
+    assert outcome.values["results"]["s3"]["error_kind"] == "conflict"
+    assert statuses(outcome)["s4"] == "not run"
+
+
+async def test_a_manager_change_that_didnt_stick_is_a_problem(
+    http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter, sneha: SnehaRecord
+) -> None:
+    sneha.manager_sticks = False
+
+    outcome, _ = await run(graph, http, scenario="manager")
+
     s3 = outcome.values["results"]["s3"]
-    assert s3["status"] == "verified"
-    assert s3["compensation"] == "not undone: left as is: it's approved now"
+    assert s3["status"] == "mismatch"
+    assert s3["verification"]["mismatches"][0].startswith("manager_id is ")
+    (problem,) = outcome.values["verification"]["problems"]
+    assert problem.startswith("s3 (change_manager) ran but didn't check out")
+    assert len(sent(hr_api, "PATCH", f"/employees/{SNEHA_ID}")) == 1  # the location wasn't
+    assert sneha.record["location"] == SNEHA["location"]
 
 
 async def test_writes_left_in_place_after_a_failure_are_called_out(
-    http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter
+    http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter, sneha: SnehaRecord
 ) -> None:
-    # Swap the order: the manager change (no safe undo) runs first, then the leave fails.
-    plan = json.loads(PLAN)
-    plan["steps"][2], plan["steps"][3] = plan["steps"][3], plan["steps"][2]
-    hr_api["create_leave"].mock(return_value=error(403, "Missing permission leave.create"))
-    llm = FakeLLM([PARSE, json.dumps(plan), "…"])
+    sneha.refuse_location = error(403, "Missing permission employee:update")
 
-    outcome = await start_run(graph, "order", REQUEST, context(http, llm), Events())
+    outcome, _ = await run(graph, http, scenario="manager")
 
     lines = summary(outcome)
-    assert lines["s4"]["status"] == "verified" and lines["s4"]["detail"] == UNDO_NOTE
-    assert lines["s3"]["status"] == "failed"
+    # A manager change has no safe automatic undo: it stays, and the summary says so.
+    assert lines["s3"]["status"] == "verified" and lines["s3"]["detail"] == UNDO_NOTE
+    assert lines["s4"]["status"] == "failed"
+    assert sneha.record["manager"] == ARUN_REF
 
 
 # ---- the model fails, the run doesn't -----------------------------------------------------
@@ -452,17 +530,17 @@ async def test_writes_left_in_place_after_a_failure_are_called_out(
 async def test_when_the_llm_is_down_at_the_end_the_result_is_still_reported(
     http: httpx.AsyncClient, graph: HrGraph, hr_api: respx.MockRouter
 ) -> None:
-    hr_api["patch_sneha"].mock(return_value=error(403, "Missing permission employee.update"))
+    hr_api["create_second"].mock(return_value=error(403, "Missing permission leave:request"))
 
     outcome, _ = await run(graph, http, answer=LLMError("provider unavailable"))
 
     answer = outcome.values["answer"]
     assert answer.startswith("The assistant couldn't write a full answer")
     assert (
-        "- s3 create leave request: compensated "
+        "- s2 create leave request: compensated "
         "(cancelled the leave request this run created)" in answer
     )
-    assert "- s4 change manager: failed" in answer
+    assert "- s3 create leave request: failed" in answer
 
 
 # ---- the tool layer on its own -------------------------------------------------------------

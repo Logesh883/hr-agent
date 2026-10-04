@@ -20,7 +20,7 @@ from fnmatch import fnmatchcase
 
 import httpx
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("hr_ai.faults")
 
 
 @dataclass

@@ -6,6 +6,7 @@ Ids are real UUIDs because the generated contract models validate them as UUIDs.
 from typing import Any
 
 from llm.types import LLMResponse, ToolCall, Usage
+from tools.permissions import role_permissions
 
 BASE_URL = "http://hr.test"
 
@@ -86,7 +87,8 @@ def session_user(role: str, name: str, employee_id: str | None) -> dict[str, Any
         "name": name,
         "role": role,
         "employeeId": employee_id,
-        "permissions": [],
+        # The role's real permissions, from the shared map (A8.1).
+        "permissions": role_permissions().get(role, []),
         "mustChangePassword": False,
     }
 

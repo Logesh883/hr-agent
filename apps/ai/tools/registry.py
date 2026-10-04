@@ -17,6 +17,7 @@ from pydantic import TypeAdapter, ValidationError
 from app.hr_client import HrApiError, HrApiUnavailableError
 from llm.types import ToolCall, ToolSpec
 from tools.base import ErrorKind, Tool, ToolContext, ToolError, ToolResult
+from tools.permissions import permitted
 
 logger = logging.getLogger("hr_ai.tools")
 
@@ -27,12 +28,15 @@ _JSON = TypeAdapter[Any](Any)
 
 
 class ToolRegistry:
-    def __init__(self, tools: Iterable[Tool[Any]]) -> None:
+    def __init__(self, tools: Iterable[Tool[Any]], *, hidden: Iterable[str] = ()) -> None:
         self._tools: dict[str, Tool[Any]] = {}
         for tool in tools:
             if tool.name in self._tools:
                 raise ValueError(f"Duplicate tool name: {tool.name}")
             self._tools[tool.name] = tool
+        # Tools that exist but this user isn't offered (A8.1): named in refusals, never
+        # listed as available.
+        self.hidden = frozenset(hidden)
 
     @property
     def names(self) -> list[str]:
@@ -40,6 +44,13 @@ class ToolRegistry:
 
     def get(self, name: str) -> Tool[Any] | None:
         return self._tools.get(name)
+
+    def for_permissions(self, permissions: Iterable[str]) -> "ToolRegistry":
+        """Only the tools these permissions allow (A8.1): what a user's agent is offered."""
+        granted = frozenset(permissions)
+        allowed = [t for t in self._tools.values() if permitted(t, granted)]
+        hidden = self.hidden | {t.name for t in self._tools.values() if t not in allowed}
+        return ToolRegistry(allowed, hidden=hidden)
 
     def specs(self) -> list[ToolSpec]:
         return [tool.spec() for tool in self._tools.values()]
@@ -64,10 +75,20 @@ class ToolRegistry:
 
     async def _execute(self, call: ToolCall, ctx: ToolContext) -> ToolResult:
         tool = self._tools.get(call.name)
+        if call.name in self.hidden:
+            return ToolResult.failure(
+                f"'{call.name}' isn't available to your role ({ctx.user.role}).", "forbidden"
+            )
         if tool is None:
             return ToolResult.failure(
                 f"Unknown tool '{call.name}'. Available tools: {', '.join(self._tools)}.",
                 "invalid",
+            )
+        if not permitted(tool, ctx.user.permissions):
+            # Never offered to this user, so a call means something went around the
+            # allow-list: refuse, whatever the arguments.
+            return ToolResult.failure(
+                f"'{call.name}' isn't available to your role ({ctx.user.role}).", "forbidden"
             )
         try:
             raw = json.loads(call.arguments or "{}")

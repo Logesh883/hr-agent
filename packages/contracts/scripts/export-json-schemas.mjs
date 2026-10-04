@@ -5,7 +5,9 @@
  *
  * It also writes json-schema/rules.json: the business-rule constants the API
  * enforces (leave entitlements, attendance cutoffs), so the AI service can check
- * that policy documents agree with them (A4.6).
+ * that policy documents agree with them (A4.6), and json-schema/permissions.json:
+ * the role → permission map, which the AI service's tool allow-list is tested
+ * against (A8.1).
  *
  * Every schema goes into one Zod registry, so a shape used in several places
  * (EmployeeRef, UserRef, …) becomes a single `$defs` entry referenced with
@@ -126,6 +128,15 @@ const rules = {
   ATTENDANCE_RULES: contracts.ATTENDANCE_RULES,
 };
 await writeFile(join(dirname(outputPath), 'rules.json'), `${JSON.stringify(rules, null, 2)}\n`);
+const permissions = {
+  ROLES: contracts.ROLES,
+  PERMISSIONS: contracts.PERMISSIONS,
+  ROLE_PERMISSIONS: contracts.ROLE_PERMISSIONS,
+};
+await writeFile(
+  join(dirname(outputPath), 'permissions.json'),
+  `${JSON.stringify(permissions, null, 2)}\n`,
+);
 
 console.log(
   `Exported ${Object.keys(requests).length} request/query and ${Object.keys(responses).length} response schemas to ${outputPath}`,

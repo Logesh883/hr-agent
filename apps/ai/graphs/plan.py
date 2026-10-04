@@ -81,6 +81,13 @@ def check_plan(plan: Plan, registry: ToolRegistry, *, allow_writes: bool = False
         if step.id in seen:
             problems.append(f"{step.id}: duplicate step id.")
         tool = registry.get(step.tool)
+        if tool is None and step.tool in registry.hidden:
+            problems.append(
+                f"{where}: not available to the signed-in user's role. Plan only steps the "
+                "role allows; the answer will say what it can't do."
+            )
+            seen.add(step.id)
+            continue
         if tool is None:
             problems.append(f"{where}: no such tool. Available: {', '.join(registry.names)}.")
             seen.add(step.id)

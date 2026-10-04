@@ -45,5 +45,7 @@ async def answer_question(
     messages, prompt = build_ask_messages(question, ctx)
     trace = trace or new_ask_trace(question, ctx)
     trace.metadata["prompt"] = str(prompt)
-    registry = ASK_REGISTRY if ctx.policies else READ_REGISTRY
+    registry = (ASK_REGISTRY if ctx.policies else READ_REGISTRY).for_permissions(
+        ctx.user.permissions
+    )
     return await run_agent(llm, registry, ctx, messages, trace=trace, prompt=prompt)

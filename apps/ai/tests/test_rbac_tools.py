@@ -117,10 +117,13 @@ async def test_employee_cannot_search_the_directory(http: httpx.AsyncClient) -> 
 
     run = await answer_question(fake, context(http, EMPLOYEE_TOKEN), "Arun's leave balance?")
 
+    # A8.1: the directory search isn't even offered to an employee...
+    offered = {spec["function"]["name"] for spec in fake.calls[0].tools or []}
+    assert "search_employee" not in offered and "get_leave_balances" in offered
+    # ...and a call to it anyway is refused before it reaches the HR API.
     assert last_tool_result(fake) == {
         "ok": False,
-        "error": "You don't have access to that. The HR system refused: "
-        "Your role (EMPLOYEE) lacks permission: employee:read.",
+        "error": "'search_employee' isn't available to your role (EMPLOYEE).",
     }
     assert run.steps[0].tool_calls[0].ok is False
 
