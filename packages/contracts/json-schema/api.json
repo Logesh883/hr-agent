@@ -266,6 +266,30 @@
         "actorId": {
           "type": "string",
           "format": "uuid"
+        },
+        "actorType": {
+          "type": "string",
+          "enum": [
+            "USER",
+            "AI",
+            "SYSTEM"
+          ]
+        },
+        "agentRunId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "toolName": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "from": {
+          "type": "string",
+          "format": "date"
+        },
+        "to": {
+          "type": "string",
+          "format": "date"
         }
       }
     },
@@ -2966,6 +2990,21 @@
             "null"
           ]
         },
+        "risk": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "status": {
           "type": "string"
         },
@@ -3083,7 +3122,34 @@
             "null"
           ]
         },
+        "entities": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {}
+        },
+        "confidence": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "missing_fields": {
+          "default": [],
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "route": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "refusal": {
           "type": [
             "string",
             "null"
@@ -3181,6 +3247,12 @@
             }
           ]
         },
+        "stopped": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
         "summary": {
           "default": [],
           "type": "array",
@@ -3193,6 +3265,16 @@
           "type": "array",
           "items": {
             "$ref": "#/$defs/RunApproval"
+          }
+        },
+        "usage": {
+          "default": {},
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "number"
           }
         }
       }

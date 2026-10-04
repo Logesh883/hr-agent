@@ -116,17 +116,17 @@ Built as vertical slices (API + tests + UI), in the order leave → documents �
 
 **Exit:** met. Every tool can be called over HTTP with a schema-checked request; RBAC, idempotency and audit apply.
 
-## Phase 4 — Approvals, Audit & Command Center UI
+## Phase 4 — Approvals, Audit & Command Center UI ✅
 
-- [ ] T4.1 Risk classification config (low / medium / high per tool + field)
-- [ ] T4.2 Schema: `Approval`, `WorkflowRun`, `ToolCall` (shared with AI scope)
-- [ ] T4.3 Approval flow: tool call held as `PENDING_APPROVAL` → approve/reject → execute
-- [ ] T4.4 Approval inbox UI (approve / reject with reason)
-- [ ] T4.5 Audit log UI: filter by actor, entity, date; before/after diff
-- [ ] T4.6 Command Center page: request input, plan preview, evidence panel, approval cards, execution timeline, verification result (built against mocked AI responses until the agent exists)
-- [ ] T4.7 Live updates for timeline (SSE or polling)
+- [x] T4.1 Risk classification config: `RISK_POLICY` in `@hr/contracts` (low / medium / high per tool, raised per field), exported to `json-schema/risk.json`; the agent's approval gate loads it and `GET /tools` shows it
+- [x] T4.2 `WorkflowRun`, `ToolCall`, `Approval`: kept in the AI service's own `ai` schema (`ai.workflow_run`, `ai.tool_call`, `ai.approval`, M5/M6) rather than duplicated in Prisma; the HR audit log links to them by `agentRunId`
+- [x] T4.3 Approval flow: the agent holds a write that needs approval (LangGraph interrupt, M6) → approve / reject / edit → it runs exactly the approved arguments; the run's owner decides (run-owner inbox)
+- [x] T4.4 Approval inbox (`/approvals`): actions and questions the assistant is holding for you, approve / reject with reason / edit; count in the sidebar
+- [x] T4.5 Audit log (`/audit`): filter by record type, actor type (user / AI), tool, run, dates; before → after per entry; links from AI entries to their run
+- [x] T4.6 Command Center (`/assistant`): request input with examples, recent requests; run page with intent summary and entities, plan with per-step risk and status, evidence (policy passages, step results), approval cards, verification, answer, trace and audit links. Built against the real agent (it existed by then)
+- [x] T4.7 Live timeline over SSE (fetch-based, since `EventSource` can't send the bearer token), resuming after the last event when a run continues
 
-**Exit:** a mocked AI run can be shown end to end in the Command Center, and sensitive calls stop for approval.
+**Exit:** met. A real agent run shows end to end in the Command Center, and medium/high-risk writes stop for approval.
 
 ## Phase 5 — Quality & Deployment
 

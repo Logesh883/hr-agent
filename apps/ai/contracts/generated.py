@@ -133,6 +133,11 @@ class AuditSearchQuery(BaseModel):
     ] = None
     entity_id: Annotated[UUID | None, Field(alias="entityId")] = None
     actor_id: Annotated[UUID | None, Field(alias="actorId")] = None
+    actor_type: Annotated[Literal["USER", "AI", "SYSTEM"] | None, Field(alias="actorType")] = None
+    agent_run_id: Annotated[UUID | None, Field(alias="agentRunId")] = None
+    tool_name: Annotated[str | None, Field(alias="toolName", max_length=100)] = None
+    from_: Annotated[date_aliased | None, Field(alias="from")] = None
+    to: date_aliased | None = None
 
 
 class PublishPolicy(BaseModel):
@@ -1064,6 +1069,7 @@ class RunStep(BaseModel):
     id: str
     tool: str
     reason: str | None = None
+    risk: Literal["low", "medium", "high"] | None = None
     status: str
     error: str | None = None
     result: str | None = None
@@ -1129,14 +1135,20 @@ class RunProgress(BaseModel):
         populate_by_name=True,
     )
     intent: str | None = None
+    entities: dict[str, Any] | None = {}
+    confidence: float | None = None
+    missing_fields: list[str] | None = []
     route: str | None = None
+    refusal: str | None = None
     clarifications: Annotated[list[Clarification] | None, Field(validate_default=True)] = []
     policy: list[str] | None = []
     passages: Annotated[list[PolicyPassage] | None, Field(validate_default=True)] = []
     plan: Plan | None = None
     verification: Verification | None = None
+    stopped: str | None = None
     summary: Annotated[list[CompletionLine] | None, Field(validate_default=True)] = []
     approvals: Annotated[list[RunApproval] | None, Field(validate_default=True)] = []
+    usage: dict[str, float] | None = {}
 
 
 class RunView(BaseModel):

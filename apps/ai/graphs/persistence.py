@@ -13,6 +13,7 @@ API be tested without a database.
 """
 
 import json
+import re
 from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
@@ -330,6 +331,12 @@ def _jsonable[T](value: T) -> T:
 
 
 RESULT_PREVIEW_CHARS = 1200
+# A8.2 fences policy text as <data source="…">…</data> for the model; people see the text.
+_FENCE = re.compile(r"^\s*<data[^>]*>\n?|\n?</data>\s*$")
+
+
+def _unfenced(text: str) -> str:
+    return _FENCE.sub("", text)
 
 
 def _short_result(record: dict[str, Any]) -> str | None:
@@ -344,10 +351,18 @@ def summarize_state(values: dict[str, Any]) -> dict[str, Any]:
     """The parts of a checkpoint worth showing in GET /agent/runs/:id."""
     plan: dict[str, Any] = values.get("plan") or {}
     results: dict[str, Any] = values.get("results", {})
+    risks: dict[str, str] = values.get("risks", {})
     steps: Sequence[dict[str, Any]] = plan.get("steps", [])
+    parsed = cast(dict[str, Any], values.get("parsed") or {})
+    entities = cast(dict[str, Any], parsed.get("entities") or {})
     return {
-        "intent": cast(dict[str, Any], values.get("parsed") or {}).get("intent"),
+        "intent": parsed.get("intent"),
+        # What the parser read from the request (A12.1: the Command Center's intent summary).
+        "entities": {k: v for k, v in entities.items() if v not in (None, [], "")},
+        "confidence": parsed.get("confidence"),
+        "missing_fields": parsed.get("missing_fields", []),
         "route": values.get("route"),
+        "refusal": values.get("refusal"),
         "clarifications": values.get("clarifications", []),
         "policy": [p["citation"] for p in values.get("policy", [])],
         "plan": {
@@ -357,6 +372,8 @@ def summarize_state(values: dict[str, Any]) -> dict[str, Any]:
                     "id": s["id"],
                     "tool": s["tool"],
                     "reason": s.get("reason"),
+                    # A write step's risk level, from the policy (None for reads).
+                    "risk": risks.get(s["id"]),
                     "status": results.get(s["id"], {}).get("status", "pending"),
                     "error": results.get(s["id"], {}).get("error"),
                     "result": _short_result(results.get(s["id"], {})),
@@ -367,10 +384,16 @@ def summarize_state(values: dict[str, Any]) -> dict[str, Any]:
         if plan
         else None,
         "verification": values.get("verification"),
+        "stopped": values.get("stopped"),
+        "usage": values.get("usage") or {},
         # The evidence behind the answer (A12.1): passages as the model saw them, and each
         # step's result, shortened.
         "passages": [
-            {"citation": p["citation"], "text": p.get("text", ""), "warning": p.get("warning")}
+            {
+                "citation": p["citation"],
+                "text": _unfenced(p.get("text", "")),
+                "warning": p.get("warning"),
+            }
             for p in values.get("policy", [])
         ],
         "summary": values.get("summary") or [],

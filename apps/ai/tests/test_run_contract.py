@@ -109,6 +109,12 @@ async def test_a_run_from_start_to_approval_matches_the_contract(
     assert approval.tool == "create_employee" and approval.risk == "medium"
     assert approval.after is not None and approval.after["manager"] == "Rahul Sharma"
     assert asked.progress is not None and asked.progress.plan is not None
+    # The intent summary and each write's risk, for the Command Center.
+    assert asked.progress.intent == "onboard_employee"
+    assert asked.progress.entities is not None
+    assert asked.progress.entities["job_title"] == "Software Engineer"
+    risks = {s.tool: s.risk for s in asked.progress.plan.steps}
+    assert risks["create_employee"] == "medium" and risks["search_employee"] is None
 
     # The inbox: the user's waiting runs.
     inbox = await client.get("/agent/runs", params={"status": "waiting"}, headers=AUTH)

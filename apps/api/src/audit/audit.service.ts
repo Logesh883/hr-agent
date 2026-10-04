@@ -49,10 +49,20 @@ export class AuditService {
   }
 
   async search(query: AuditSearchQuery): Promise<Paginated<AuditLogEntry>> {
-    const where = {
+    const where: Prisma.AuditLogWhereInput = {
       entityType: query.entityType,
       entityId: query.entityId,
       actorId: query.actorId,
+      actorType: query.actorType,
+      agentRunId: query.agentRunId,
+      toolName: query.toolName,
+      timestamp:
+        query.from || query.to
+          ? {
+              gte: query.from ? new Date(`${query.from}T00:00:00Z`) : undefined,
+              lt: query.to ? nextDay(query.to) : undefined,
+            }
+          : undefined,
     };
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.auditLog.findMany({
@@ -93,6 +103,12 @@ export class AuditService {
       pageSize: query.pageSize,
     };
   }
+}
+
+function nextDay(date: string): Date {
+  const day = new Date(`${date}T00:00:00Z`);
+  day.setUTCDate(day.getUTCDate() + 1);
+  return day;
 }
 
 /**

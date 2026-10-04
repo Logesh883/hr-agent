@@ -909,6 +909,10 @@ def ask_which(error: UnresolvedReference) -> int | None:
         .strip()
         .casefold()
     )
+    # Picking an option as offered (the Command Center's buttons) is always exact.
+    offered = [i for i, option in enumerate(options) if option.casefold() == answer]
+    if len(offered) == 1:
+        return offered[0]
     matches = [i for i, c in enumerate(error.candidates) if answer and _matches(answer, c)]
     return matches[0] if len(matches) == 1 else None
 

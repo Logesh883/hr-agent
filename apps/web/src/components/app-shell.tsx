@@ -14,6 +14,9 @@ import {
   LifeBuoy,
   LogOut,
   Moon,
+  ScrollText,
+  ShieldCheck,
+  Sparkles,
   Sun,
   Users,
 } from "lucide-react";
@@ -32,12 +35,15 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useRuns } from "@/lib/agent-queries";
 import { initials, roleLabels } from "@/lib/format";
 import { useCan, useCurrentUser } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 const nav: { href: string; label: string; icon: typeof Users; permission?: Permission }[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/assistant", label: "AI assistant", icon: Sparkles },
+  { href: "/approvals", label: "Approvals", icon: ShieldCheck },
   { href: "/employees", label: "Employees", icon: Users, permission: "employee:read" },
   { href: "/onboarding", label: "Onboarding", icon: ClipboardCheck, permission: "onboarding:read" },
   { href: "/leave", label: "Leave", icon: CalendarDays, permission: "leave:request" },
@@ -46,6 +52,7 @@ const nav: { href: string; label: string; icon: typeof Users; permission?: Permi
   { href: "/payroll", label: "Payroll prep", icon: Banknote, permission: "payroll:read" },
   { href: "/policies", label: "Policies", icon: BookOpen, permission: "policy:read" },
   { href: "/departments", label: "Departments", icon: Building2, permission: "department:read" },
+  { href: "/audit", label: "Audit log", icon: ScrollText, permission: "audit:read" },
   { href: "/guide", label: "User guide", icon: LifeBuoy },
 ];
 
@@ -53,6 +60,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const can = useCan();
   const items = nav.filter((item) => !item.permission || can(item.permission));
+  // What the AI assistant is holding for this user (approvals and questions).
+  const waiting = useRuns("waiting", { poll: true }).data?.items.length ?? 0;
 
   const isActive = (href: string) =>
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
@@ -78,6 +87,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             >
               <Icon className="size-4" />
               {label}
+              {href === "/approvals" && waiting > 0 && (
+                <Badge className="ml-auto h-5 min-w-5 px-1.5 tabular-nums">{waiting}</Badge>
+              )}
             </Link>
           ))}
         </nav>

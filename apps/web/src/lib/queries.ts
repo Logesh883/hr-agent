@@ -4,6 +4,7 @@ import type {
   ArchiveEmployeeRequest,
   AuditEntityType,
   AuditLogEntry,
+  AuditSearchParams,
   CreateDepartmentRequest,
   CreateEmployeeRequest,
   Department,
@@ -23,6 +24,7 @@ export const queryKeys = {
   departments: ["departments"] as const,
   audit: (entityType: AuditEntityType, entityId: string) =>
     ["audit", entityType, entityId] as const,
+  auditSearch: (params: AuditSearchParams) => ["audit", "search", params] as const,
 };
 
 // ---- Queries ---------------------------------------------------------------
@@ -70,6 +72,18 @@ export function useAuditLog(entityType: AuditEntityType, entityId: string, enabl
         query: { entityType, entityId, pageSize: 50 },
       }),
     enabled: !!token && enabled,
+  });
+}
+
+/** T4.5: the whole audit log, filtered. */
+export function useAuditSearch(params: AuditSearchParams) {
+  const token = useAccessToken();
+  return useQuery({
+    queryKey: queryKeys.auditSearch(params),
+    queryFn: () =>
+      apiFetch<Paginated<AuditLogEntry>>(token, "/audit-logs", { query: { ...params } }),
+    enabled: !!token,
+    placeholderData: (previous) => previous,
   });
 }
 

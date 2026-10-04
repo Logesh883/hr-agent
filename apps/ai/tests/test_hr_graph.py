@@ -197,8 +197,13 @@ async def test_missing_information_pauses_for_the_user_and_resumes_the_same_thre
 
 
 @respx.mock
+@pytest.mark.parametrize(
+    "answer",
+    ["EMP005", "Arun Kumar (EMP005, Senior Software Engineer, Engineering)"],
+    ids=["code", "option as offered"],
+)
 async def test_several_matches_pause_to_ask_which_one(
-    http: httpx.AsyncClient, graph: HrGraph
+    http: httpx.AsyncClient, graph: HrGraph, answer: str
 ) -> None:
     respx.get(f"{BASE_URL}/employees", params={"q": "Kumar"}).respond(json=page(SNEHA, ARUN))
     balance_route = respx.get(f"{BASE_URL}/employees/{ARUN_ID}/leave-balances").respond(
@@ -224,7 +229,7 @@ async def test_several_matches_pause_to_ask_which_one(
         "Arun Kumar (EMP005, Senior Software Engineer, Engineering)",
     ]
 
-    done = await resume_run(graph, "t3", "EMP005", context(http, llm), Events())
+    done = await resume_run(graph, "t3", answer, context(http, llm), Events())
 
     assert done.status == "completed"
     assert balance_route.call_count == 1

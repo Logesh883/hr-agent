@@ -106,6 +106,8 @@ export const runStepSchema = z.object({
   id: z.string(),
   tool: z.string(),
   reason: z.string().nullish(),
+  /** A write step's risk level, from the risk policy; null for reads. */
+  risk: z.enum(RISK_LEVELS).nullish(),
   status: z.string(),
   error: z.string().nullish(),
   /** The tool's result, shortened: the evidence behind the answer. */
@@ -138,7 +140,13 @@ export const completionLineSchema = z.object({
 
 export const runProgressSchema = z.object({
   intent: z.string().nullish(),
+  /** What the parser read from the request: people, dates, leave type, … */
+  entities: z.record(z.string(), z.unknown()).default({}),
+  confidence: z.number().nullish(),
+  missing_fields: z.array(z.string()).default([]),
   route: z.string().nullish(),
+  /** Why the request was declined, when code decided it (the role can't do it). */
+  refusal: z.string().nullish(),
   clarifications: z.array(z.object({ question: z.string(), answer: z.string() })).default([]),
   policy: z.array(z.string()).default([]),
   passages: z.array(policyPassageSchema).default([]),
@@ -152,8 +160,11 @@ export const runProgressSchema = z.object({
       findings: z.array(z.string()),
     })
     .nullish(),
+  /** Why execution stopped early: a rejected step, a failed write, a mismatch. */
+  stopped: z.string().nullish(),
   summary: z.array(completionLineSchema).default([]),
   approvals: z.array(runApprovalSchema).default([]),
+  usage: z.record(z.string(), z.number()).default({}),
 });
 export type RunProgress = z.output<typeof runProgressSchema>;
 

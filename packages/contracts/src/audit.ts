@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { paginationQuery } from './common.js';
+import { isoDate, paginationQuery } from './common.js';
 
 export const ACTOR_TYPES = ['USER', 'AI', 'SYSTEM'] as const;
 export type ActorType = (typeof ACTOR_TYPES)[number];
@@ -17,12 +17,25 @@ export const AUDIT_ENTITY_TYPES = [
 ] as const;
 export type AuditEntityType = (typeof AUDIT_ENTITY_TYPES)[number];
 
-export const auditSearchSchema = paginationQuery.extend({
-  entityType: z.enum(AUDIT_ENTITY_TYPES).optional(),
-  entityId: z.uuid().optional(),
-  actorId: z.uuid().optional(),
-});
+export const auditSearchSchema = paginationQuery
+  .extend({
+    entityType: z.enum(AUDIT_ENTITY_TYPES).optional(),
+    entityId: z.uuid().optional(),
+    actorId: z.uuid().optional(),
+    actorType: z.enum(ACTOR_TYPES).optional(),
+    /** Changes made by one AI agent run. */
+    agentRunId: z.uuid().optional(),
+    toolName: z.string().trim().max(100).optional(),
+    /** Inclusive day range (UTC). */
+    from: isoDate.optional(),
+    to: isoDate.optional(),
+  })
+  .refine((v) => !v.from || !v.to || v.from <= v.to, {
+    path: ['to'],
+    message: 'The end date must be on or after the start date',
+  });
 export type AuditSearchQuery = z.output<typeof auditSearchSchema>;
+export type AuditSearchParams = Partial<AuditSearchQuery>;
 
 export interface AuditLogEntry {
   id: string;

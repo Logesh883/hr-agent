@@ -235,6 +235,36 @@ describe('Tool API (database)', () => {
         ['employee.updated', 'AI', 'change_manager', runId],
       ]),
     );
+
+    // T4.5: the audit search filters by run, tool, actor type and day.
+    const today = new Date().toISOString().slice(0, 10);
+    const byRun = await as(
+      'hr',
+      api()
+        .get('/audit-logs')
+        .query({ agentRunId: runId, actorType: 'AI', from: today, to: today }),
+    ).expect(200);
+    expect(
+      (byRun.body as Paginated<AuditLogEntry>).items
+        .map((e) => e.toolName)
+        .sort(),
+    ).toEqual(['change_manager', 'create_employee', 'start_onboarding']);
+    const byTool = await as(
+      'hr',
+      api()
+        .get('/audit-logs')
+        .query({ agentRunId: runId, toolName: 'change_manager' }),
+    ).expect(200);
+    expect((byTool.body as Paginated<AuditLogEntry>).total).toBe(1);
+    const yesterday = await as(
+      'hr',
+      api().get('/audit-logs').query({ agentRunId: runId, to: '2020-01-01' }),
+    ).expect(200);
+    expect((yesterday.body as Paginated<AuditLogEntry>).total).toBe(0);
+    await as(
+      'hr',
+      api().get('/audit-logs').query({ from: '2026-10-05', to: '2026-10-01' }),
+    ).expect(400);
   });
 
   it('requests leave as an employee and approves it as HR', async () => {
