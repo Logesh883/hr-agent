@@ -7,7 +7,7 @@ One file per finished module of the [learning and build plan](../AI_AGENT_TASKS.
 | M0 | [Python service foundations](M0-python-service.md) | `apps/ai` FastAPI service, settings, typed HR API client |
 | M1 | [LLM fundamentals](M1-llm-fundamentals.md) | Provider-neutral LLM client, retries, streaming, logging, versioned prompts, `FakeLLM`, `hr-ai` CLI |
 | M2 (in progress) | [Structured outputs](M2-structured-outputs.md) | A2.1–A2.5 schema, retry, tool-based entity resolution and authenticated `/agent/parse`; A2.6 dataset and eval runner (provider scores pending) |
-| M3 (in progress) | [Tool calling](M3-tool-calling.md) | A3.1 underway: exports the HR API's Zod request/query schemas and generates matching Python Pydantic models |
+| M3 (in progress) | [Tool calling](M3-tool-calling.md) | Contracts shared with Python, tool framework, nine read-only HR tools, hand-written agent loop, RBAC through tools, masked tracing, `POST /agent/ask` (Langfuse export not yet confirmed live) |
 
 ## How each note is laid out
 

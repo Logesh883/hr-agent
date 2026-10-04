@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { isoDate, paginationQuery, type UserRef } from './common.js';
-import type { EmployeeRef } from './employee.js';
-import type { LeaveType } from './leave.js';
+import { employeeRefSchema, type EmployeeRef } from './employee.js';
+import { LEAVE_TYPES } from './leave.js';
 
 /** What a stored attendance record says. */
 export const ATTENDANCE_STATUSES = ['PRESENT', 'HALF_DAY', 'ABSENT'] as const;
@@ -91,31 +91,40 @@ export const correctionSearchSchema = paginationQuery.extend({
 export type CorrectionSearchQuery = z.output<typeof correctionSearchSchema>;
 export type CorrectionSearchParams = Partial<CorrectionSearchQuery>;
 
-export interface AttendanceAnomaly {
-  code: AnomalyCode;
-  message: string;
-}
+export const attendanceAnomalySchema = z.object({
+  code: z.enum(ANOMALY_CODES),
+  message: z.string(),
+});
+export type AttendanceAnomaly = z.infer<typeof attendanceAnomalySchema>;
 
-export interface AttendanceEntry {
-  status: AttendanceStatus;
+export const attendanceEntrySchema = z.object({
+  status: z.enum(ATTENDANCE_STATUSES),
   /** Local time, HH:mm. */
-  checkIn: string | null;
-  checkOut: string | null;
-}
+  checkIn: z.string().nullable(),
+  checkOut: z.string().nullable(),
+});
+export type AttendanceEntry = z.infer<typeof attendanceEntrySchema>;
 
-export interface AttendanceDay {
-  date: string;
-  employee: EmployeeRef;
-  dayStatus: DayStatus;
-  record: (AttendanceEntry & { id: string; source: 'SYSTEM' | 'MANUAL' | 'CORRECTION'; correctionReason: string | null }) | null;
+export const attendanceDaySchema = z.object({
+  date: isoDate,
+  employee: employeeRefSchema,
+  dayStatus: z.enum(DAY_STATUSES),
+  record: attendanceEntrySchema
+    .extend({
+      id: z.uuid(),
+      source: z.enum(['SYSTEM', 'MANUAL', 'CORRECTION']),
+      correctionReason: z.string().nullable(),
+    })
+    .nullable(),
   /** Worked time in minutes, when both times are known. */
-  workedMinutes: number | null;
-  leave: { id: string; type: LeaveType } | null;
-  holiday: string | null;
-  anomalies: AttendanceAnomaly[];
+  workedMinutes: z.number().nullable(),
+  leave: z.object({ id: z.uuid(), type: z.enum(LEAVE_TYPES) }).nullable(),
+  holiday: z.string().nullable(),
+  anomalies: z.array(attendanceAnomalySchema),
   /** Whether a correction is already waiting for approval for this day. */
-  pendingCorrection: boolean;
-}
+  pendingCorrection: z.boolean(),
+});
+export type AttendanceDay = z.infer<typeof attendanceDaySchema>;
 
 export interface DailyAttendance {
   date: string;
@@ -125,27 +134,29 @@ export interface DailyAttendance {
   summary: Record<'present' | 'halfDay' | 'absent' | 'onLeave' | 'missing', number>;
 }
 
-export interface MonthlyAttendanceRow {
-  employee: EmployeeRef;
-  workingDays: number;
-  present: number;
-  halfDays: number;
-  absent: number;
-  onLeave: number;
-  missing: number;
-  anomalies: number;
-}
+export const monthlyAttendanceRowSchema = z.object({
+  employee: employeeRefSchema,
+  workingDays: z.number(),
+  present: z.number(),
+  halfDays: z.number(),
+  absent: z.number(),
+  onLeave: z.number(),
+  missing: z.number(),
+  anomalies: z.number(),
+});
+export type MonthlyAttendanceRow = z.infer<typeof monthlyAttendanceRowSchema>;
 
-export interface MonthlyAttendance {
-  month: string;
+export const monthlyAttendanceReportSchema = z.object({
+  month,
   /** Working days elapsed so far (the whole month once it's over). */
-  workingDays: number;
-  rows: MonthlyAttendanceRow[];
+  workingDays: z.number(),
+  rows: z.array(monthlyAttendanceRowSchema),
   /** Every anomaly in the month, newest first. */
-  anomalies: (AttendanceAnomaly & { date: string; employee: EmployeeRef })[];
+  anomalies: z.array(attendanceAnomalySchema.extend({ date: isoDate, employee: employeeRefSchema })),
   /** Day-by-day detail; only when a single employee is requested. */
-  days?: AttendanceDay[];
-}
+  days: z.array(attendanceDaySchema).optional(),
+});
+export type MonthlyAttendance = z.infer<typeof monthlyAttendanceReportSchema>;
 
 export interface AttendanceCorrection {
   id: string;

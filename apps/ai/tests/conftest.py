@@ -16,5 +16,8 @@ def isolated_settings(monkeypatch: pytest.MonkeyPatch) -> None:
         "OPENROUTER_API_KEY",
         "GEMINI_API_KEY",
         "AI_ENV",
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+        "LANGFUSE_HOST",
     ):
         monkeypatch.delenv(name, raising=False)

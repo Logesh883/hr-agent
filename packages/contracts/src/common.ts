@@ -8,11 +8,24 @@ export const paginationQuery = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+/** ISO 8601 timestamp in UTC, e.g. 2026-10-12T09:30:00.000Z. */
+export const isoDateTime = z.iso.datetime();
+
 export interface Paginated<T> {
   items: T[];
   total: number;
   page: number;
   pageSize: number;
+}
+
+/** Runtime schema for a `Paginated<T>` response, for clients that validate what they receive. */
+export function paginatedSchema<T extends z.ZodType>(item: T) {
+  return z.object({
+    items: z.array(item),
+    total: z.number().int(),
+    page: z.number().int(),
+    pageSize: z.number().int(),
+  });
 }
 
 export interface HealthStatus {
@@ -33,7 +46,8 @@ export interface ApiError {
 }
 
 /** A login account, e.g. who requested or approved something. */
-export interface UserRef {
-  id: string;
-  name: string;
-}
+export const userRefSchema = z.object({
+  id: z.uuid(),
+  name: z.string(),
+});
+export type UserRef = z.infer<typeof userRefSchema>;

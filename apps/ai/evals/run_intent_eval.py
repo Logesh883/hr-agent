@@ -18,9 +18,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Measure intent accuracy and entity precision/recall on labelled requests."
     )
-    parser.add_argument(
-        "--dataset", type=Path, default=Path(__file__).with_name("intents.jsonl")
-    )
+    parser.add_argument("--dataset", type=Path, default=Path(__file__).with_name("intents.jsonl"))
     parser.add_argument(
         "--today",
         type=date.fromisoformat,

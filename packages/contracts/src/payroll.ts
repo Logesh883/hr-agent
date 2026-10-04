@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import type { UserRef } from './common.js';
-import type { EmployeeRef, EmploymentType } from './employee.js';
+import { isoDate, userRefSchema } from './common.js';
+import { EMPLOYMENT_TYPES, employeeRefSchema } from './employee.js';
 
 export const payrollReportSchema = z.object({
   month: z.string().regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Use YYYY-MM'),
@@ -18,53 +18,57 @@ export const PAYROLL_FLAG_CODES = [
 export type PayrollFlagCode = (typeof PAYROLL_FLAG_CODES)[number];
 
 /** Something to fix before the payroll run. */
-export interface PayrollFlag {
-  code: PayrollFlagCode;
-  message: string;
-}
+export const payrollFlagSchema = z.object({
+  code: z.enum(PAYROLL_FLAG_CODES),
+  message: z.string(),
+});
+export type PayrollFlag = z.infer<typeof payrollFlagSchema>;
 
 /** Payroll inputs for one employee and month. No salary maths: that's out of MVP scope. */
-export interface PayrollRow {
-  employee: EmployeeRef;
-  department: string | null;
-  employmentType: EmploymentType;
-  joiningDate: string;
+export const payrollRowSchema = z.object({
+  employee: employeeRefSchema,
+  department: z.string().nullable(),
+  employmentType: z.enum(EMPLOYMENT_TYPES),
+  joiningDate: isoDate,
   /** Joined during the month (pay is prorated from the joining date). */
-  newJoiner: boolean;
+  newJoiner: z.boolean(),
   /** Company working days in the month while employed. */
-  workingDays: number;
+  workingDays: z.number(),
   /** Present days (half days count 0.5). */
-  daysWorked: number;
-  paidLeaveDays: number;
-  unpaidLeaveDays: number;
+  daysWorked: z.number(),
+  paidLeaveDays: z.number(),
+  unpaidLeaveDays: z.number(),
   /** Absent without leave, or no record and no leave. */
-  unexplainedDays: number;
+  unexplainedDays: z.number(),
   /** Loss of pay: unpaid leave + unexplained days. */
-  lopDays: number;
-  payableDays: number;
-  flags: PayrollFlag[];
-}
+  lopDays: z.number(),
+  payableDays: z.number(),
+  flags: z.array(payrollFlagSchema),
+});
+export type PayrollRow = z.infer<typeof payrollRowSchema>;
 
-export interface PayrollChange {
-  employee: EmployeeRef;
-  kind: 'JOINED' | 'EXITED' | 'CHANGED';
-  summary: string;
-  date: string;
-  by: UserRef | null;
-}
+export const payrollChangeSchema = z.object({
+  employee: employeeRefSchema,
+  kind: z.enum(['JOINED', 'EXITED', 'CHANGED']),
+  summary: z.string(),
+  date: isoDate,
+  by: userRefSchema.nullable(),
+});
+export type PayrollChange = z.infer<typeof payrollChangeSchema>;
 
-export interface PayrollReport {
-  month: string;
+export const payrollReportResponseSchema = z.object({
+  month: z.string(),
   /** Last date the report covers (month end, or today for the current month). */
-  through: string;
-  complete: boolean;
-  summary: {
-    headcount: number;
-    newJoiners: number;
-    exits: number;
-    employeesWithFlags: number;
-    lopDays: number;
-  };
-  rows: PayrollRow[];
-  changes: PayrollChange[];
-}
+  through: isoDate,
+  complete: z.boolean(),
+  summary: z.object({
+    headcount: z.number().int(),
+    newJoiners: z.number().int(),
+    exits: z.number().int(),
+    employeesWithFlags: z.number().int(),
+    lopDays: z.number(),
+  }),
+  rows: z.array(payrollRowSchema),
+  changes: z.array(payrollChangeSchema),
+});
+export type PayrollReport = z.infer<typeof payrollReportResponseSchema>;

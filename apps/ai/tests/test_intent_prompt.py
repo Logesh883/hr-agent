@@ -3,7 +3,6 @@ import re
 from datetime import date
 
 import pytest
-from pydantic import ValidationError
 
 from intent.parser import MAX_TOKENS, parse_request
 from intent.prompt import RESPONSE_FORMAT, build_intent_messages, calendar_block
@@ -103,8 +102,27 @@ async def test_parse_request_adds_missing_fields() -> None:
     assert parsed.needs_clarification
 
 
-async def test_parse_request_rejects_output_that_breaks_the_schema() -> None:
-    llm = FakeLLM(['{"intent": "book_flight", "confidence": 0.9}'])
+async def test_parse_request_retries_once_with_the_validation_error() -> None:
+    llm = FakeLLM(
+        [
+            '{"intent": "book_flight", "confidence": 0.9}',
+            ModelParse(intent=Intent.UNKNOWN, confidence=0.9).model_dump_json(),
+        ]
+    )
 
-    with pytest.raises(ValidationError):
-        await parse_request(llm, "Book a flight", today=TUESDAY, role="EMPLOYEE")
+    parsed = await parse_request(llm, "Book a flight", today=TUESDAY, role="EMPLOYEE")
+
+    assert parsed.intent is Intent.UNKNOWN
+    retry = llm.calls[1].messages
+    assert retry[-2].content == '{"intent": "book_flight", "confidence": 0.9}'
+    assert "did not match the required schema" in (retry[-1].content or "")
+
+
+async def test_parse_request_asks_to_rephrase_after_two_bad_outputs() -> None:
+    llm = FakeLLM(['{"intent": "book_flight"}', '{"intent": "book_flight"}'])
+
+    parsed = await parse_request(llm, "Book a flight", today=TUESDAY, role="EMPLOYEE")
+
+    assert parsed.intent is Intent.UNKNOWN
+    assert parsed.confidence == 0
+    assert parsed.clarifying_question

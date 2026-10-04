@@ -4,10 +4,12 @@ from datetime import date
 from typing import Annotated, cast, get_args
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
-from app.hr_client import HrApiClient, HrApiError, HrApiUnavailableError
+from agent.ask import answer_question, new_ask_trace
+from agent.loop import AgentStep, StopReason
+from app.hr_client import HrApiClient, HrApiError, HrApiUnavailableError, SessionUser
 from app.llm_routes import get_llm
 from app.settings import Settings
 from intent.entity_resolution import resolve_entities_with_tools
@@ -15,6 +17,9 @@ from intent.parser import parse_request
 from intent.prompt import Role
 from intent.schema import Entities, EntityField, Intent
 from llm.base import LLMClient, LLMError
+from llm.types import Usage
+from tools.base import ToolContext
+from tracing.langfuse import TraceExporter
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -51,15 +56,7 @@ async def parse_agent_request(
         base_url=settings.hr_api_url, timeout=settings.hr_api_timeout
     ) as http:
         hr = HrApiClient(http, token)
-        try:
-            user = await hr.me()
-        except HrApiError as error:
-            raise _hr_http_error(error) from error
-        except HrApiUnavailableError as error:
-            raise HTTPException(503, "HR API is unavailable") from error
-
-        if user.role not in get_args(Role):
-            raise HTTPException(403, "This account does not have an agent role")
+        user = await _signed_in_user(hr)
         role = cast(Role, user.role)
         today = date.today()
         try:
@@ -95,6 +92,69 @@ async def parse_agent_request(
         waiting_for_user=resolution.waiting_for_user if resolution else False,
         candidates=resolution.candidates if resolution else [],
     )
+
+
+class AskRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+
+
+class AskResponse(BaseModel):
+    answer: str
+    stop_reason: StopReason
+    # Every LLM turn and tool call, in order: what the agent did to reach the answer.
+    steps: list[AgentStep]
+    usage: Usage
+    trace_id: str
+
+
+@router.post("/ask", response_model=AskResponse)
+async def ask(
+    body: AskRequest,
+    request: Request,
+    background: BackgroundTasks,
+    llm: Annotated[LLMClient, Depends(get_llm)],
+    authorization: Annotated[str | None, Header()] = None,
+) -> AskResponse:
+    """Answer a read-only HR question with tools, as the authenticated HR API user."""
+    token = _bearer_token(authorization)
+    settings: Settings = request.app.state.settings
+    exporter: TraceExporter = request.app.state.trace_exporter
+    async with httpx.AsyncClient(
+        base_url=settings.hr_api_url, timeout=settings.hr_api_timeout
+    ) as http:
+        hr = HrApiClient(http, token)
+        ctx = ToolContext(hr=hr, user=await _signed_in_user(hr), today=date.today())
+        trace = new_ask_trace(body.question, ctx)
+        try:
+            run = await answer_question(llm, ctx, body.question, trace=trace)
+        except LLMError as error:
+            # Export the failed run too: a trace is most useful when something went wrong.
+            trace.finish({"error": str(error)})
+            await exporter.export(trace)
+            raise HTTPException(502, "The language model could not process this request") from error
+
+    # After the response is sent, so tracing never adds latency.
+    background.add_task(exporter.export, trace)
+    return AskResponse(
+        answer=run.answer,
+        stop_reason=run.stop_reason,
+        steps=run.steps,
+        usage=run.usage,
+        trace_id=run.trace_id,
+    )
+
+
+async def _signed_in_user(hr: HrApiClient) -> SessionUser:
+    """Who the token belongs to; only the four agent roles may use the agent."""
+    try:
+        user = await hr.me()
+    except HrApiError as error:
+        raise _hr_http_error(error) from error
+    except HrApiUnavailableError as error:
+        raise HTTPException(503, "HR API is unavailable") from error
+    if user.role not in get_args(Role):
+        raise HTTPException(403, "This account does not have an agent role")
+    return user
 
 
 def _bearer_token(authorization: str | None) -> str:

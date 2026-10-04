@@ -4,11 +4,10 @@
 from __future__ import annotations
 
 from datetime import date as date_aliased
-from enum import Enum
-from typing import Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, RootModel, conint, constr
+from pydantic import AwareDatetime, BaseModel, ConfigDict, EmailStr, Field, RootModel
 
 
 class Model(RootModel[Any]):
@@ -16,317 +15,787 @@ class Model(RootModel[Any]):
 
 
 class LoginRequest(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
     email: EmailStr
-    password: constr(min_length=1)
+    password: Annotated[str, Field(min_length=1)]
 
 
 class NewPassword(RootModel[str]):
-    model_config = ConfigDict(
-        regex_engine="python-re",
-    )
-    root: constr(pattern=r'(?=[A-Za-z])(?=\d)', min_length=10, max_length=200)
+    root: Annotated[str, Field(max_length=200, min_length=10)]
 
 
 class ChangePassword(BaseModel):
-    currentPassword: constr(min_length=1)
-    newPassword: NewPassword
-
-
-class Role(Enum):
-    ADMIN = 'ADMIN'
-    HR_OPS = 'HR_OPS'
-    MANAGER = 'MANAGER'
-    EMPLOYEE = 'EMPLOYEE'
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    current_password: Annotated[str, Field(alias="currentPassword", min_length=1)]
+    new_password: Annotated[NewPassword, Field(alias="newPassword")]
 
 
 class GrantAccess(BaseModel):
-    role: Role
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    role: Literal["ADMIN", "HR_OPS", "MANAGER", "EMPLOYEE"]
 
 
 class UpdateAccess(BaseModel):
-    role: Role | None = None
-    isActive: bool | None = None
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    role: Literal["ADMIN", "HR_OPS", "MANAGER", "EMPLOYEE"] | None = None
+    is_active: Annotated[bool | None, Field(alias="isActive")] = None
 
 
 class DailyAttendanceQuery(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
     date: date_aliased
-    departmentId: UUID | None = None
+    department_id: Annotated[UUID | None, Field(alias="departmentId")] = None
 
 
 class MonthlyAttendanceQuery(BaseModel):
-    month: constr(pattern=r'^\d{4}-(0[1-9]|1[0-2])$')
-    departmentId: UUID | None = None
-    employeeId: UUID | None = None
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    month: Annotated[str, Field(pattern="^\\d{4}-(0[1-9]|1[0-2])$")]
+    department_id: Annotated[UUID | None, Field(alias="departmentId")] = None
+    employee_id: Annotated[UUID | None, Field(alias="employeeId")] = None
 
 
-class Status(Enum):
-    PRESENT = 'PRESENT'
-    HALF_DAY = 'HALF_DAY'
-    ABSENT = 'ABSENT'
+class CheckIn(RootModel[str]):
+    root: Annotated[str, Field(pattern="^([01]\\d|2[0-3]):[0-5]\\d$")]
+
+
+class CheckOut(RootModel[str]):
+    root: Annotated[str, Field(pattern="^([01]\\d|2[0-3]):[0-5]\\d$")]
 
 
 class ProposeCorrection(BaseModel):
-    employeeId: UUID
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    employee_id: Annotated[UUID, Field(alias="employeeId")]
     date: date_aliased
-    status: Status
-    checkIn: constr(pattern=r'^([01]\d|2[0-3]):[0-5]\d$') | None = None
-    checkOut: constr(pattern=r'^([01]\d|2[0-3]):[0-5]\d$') | None = None
-    reason: constr(min_length=1, max_length=500)
+    status: Literal["PRESENT", "HALF_DAY", "ABSENT"]
+    check_in: Annotated[CheckIn | None, Field(alias="checkIn")] = None
+    check_out: Annotated[CheckOut | None, Field(alias="checkOut")] = None
+    reason: Annotated[str, Field(max_length=500, min_length=1)]
 
 
 class ApproveCorrection(BaseModel):
-    comment: constr(max_length=500) | None = None
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    comment: Annotated[str | None, Field(max_length=500)] = None
 
 
 class RejectCorrection(BaseModel):
-    reason: constr(min_length=1, max_length=500)
-
-
-class Status1(Enum):
-    PENDING = 'PENDING'
-    APPROVED = 'APPROVED'
-    REJECTED = 'REJECTED'
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    reason: Annotated[str, Field(max_length=500, min_length=1)]
 
 
 class CorrectionSearchQuery(BaseModel):
-    page: conint(ge=1, le=9007199254740991) | None = 1
-    pageSize: conint(ge=1, le=100) | None = 20
-    status: Status1 | None = None
-    employeeId: UUID | None = None
-
-
-class EntityType(Enum):
-    Employee = 'Employee'
-    Department = 'Department'
-    LeaveRequest = 'LeaveRequest'
-    Document = 'Document'
-    OnboardingTask = 'OnboardingTask'
-    AttendanceRecord = 'AttendanceRecord'
-    AttendanceCorrection = 'AttendanceCorrection'
-    PolicyDocument = 'PolicyDocument'
-    User = 'User'
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    page: Annotated[int | None, Field(ge=1, le=9007199254740991)] = 1
+    page_size: Annotated[int | None, Field(alias="pageSize", ge=1, le=100)] = 20
+    status: Literal["PENDING", "APPROVED", "REJECTED"] | None = None
+    employee_id: Annotated[UUID | None, Field(alias="employeeId")] = None
 
 
 class AuditSearchQuery(BaseModel):
-    page: conint(ge=1, le=9007199254740991) | None = 1
-    pageSize: conint(ge=1, le=100) | None = 20
-    entityType: EntityType | None = None
-    entityId: UUID | None = None
-    actorId: UUID | None = None
-
-
-class Category(Enum):
-    LEAVE = 'LEAVE'
-    ATTENDANCE = 'ATTENDANCE'
-    CONDUCT = 'CONDUCT'
-    ONBOARDING = 'ONBOARDING'
-    BENEFITS = 'BENEFITS'
-    PAYROLL = 'PAYROLL'
-    IT_SECURITY = 'IT_SECURITY'
-    OTHER = 'OTHER'
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    page: Annotated[int | None, Field(ge=1, le=9007199254740991)] = 1
+    page_size: Annotated[int | None, Field(alias="pageSize", ge=1, le=100)] = 20
+    entity_type: Annotated[
+        Literal[
+            "Employee",
+            "Department",
+            "LeaveRequest",
+            "Document",
+            "OnboardingTask",
+            "AttendanceRecord",
+            "AttendanceCorrection",
+            "PolicyDocument",
+            "User",
+        ]
+        | None,
+        Field(alias="entityType"),
+    ] = None
+    entity_id: Annotated[UUID | None, Field(alias="entityId")] = None
+    actor_id: Annotated[UUID | None, Field(alias="actorId")] = None
 
 
 class PublishPolicy(BaseModel):
-    title: constr(min_length=3, max_length=120)
-    category: Category
-    effectiveFrom: date_aliased
-    summary: constr(max_length=500) | None = None
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    title: Annotated[str, Field(max_length=120, min_length=3)]
+    category: Literal[
+        "LEAVE",
+        "ATTENDANCE",
+        "CONDUCT",
+        "ONBOARDING",
+        "BENEFITS",
+        "PAYROLL",
+        "IT_SECURITY",
+        "OTHER",
+    ]
+    effective_from: Annotated[date_aliased, Field(alias="effectiveFrom")]
+    summary: Annotated[str | None, Field(max_length=500)] = None
 
 
 class CreateDepartment(BaseModel):
-    name: constr(min_length=1, max_length=100)
-    code: constr(pattern=r'^[A-Z0-9_-]{2,10}$')
-    managerId: UUID | None = None
-
-
-class Status2(Enum):
-    ACTIVE = 'ACTIVE'
-    ARCHIVED = 'ARCHIVED'
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    name: Annotated[str, Field(max_length=100, min_length=1)]
+    code: Annotated[str, Field(pattern="^[A-Z0-9_-]{2,10}$")]
+    manager_id: Annotated[UUID | None, Field(alias="managerId")] = None
 
 
 class UpdateDepartment(BaseModel):
-    name: constr(min_length=1, max_length=100) | None = None
-    code: constr(pattern=r'^[A-Z0-9_-]{2,10}$') | None = None
-    managerId: UUID | None = None
-    status: Status2 | None = None
-
-
-class Type(Enum):
-    OFFER_LETTER = 'OFFER_LETTER'
-    ID_PROOF = 'ID_PROOF'
-    ADDRESS_PROOF = 'ADDRESS_PROOF'
-    PAN_CARD = 'PAN_CARD'
-    BANK_DETAILS = 'BANK_DETAILS'
-    EDUCATION_CERTIFICATE = 'EDUCATION_CERTIFICATE'
-    EXPERIENCE_LETTER = 'EXPERIENCE_LETTER'
-    PHOTO = 'PHOTO'
-    OTHER = 'OTHER'
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    name: Annotated[str | None, Field(max_length=100, min_length=1)] = None
+    code: Annotated[str | None, Field(pattern="^[A-Z0-9_-]{2,10}$")] = None
+    manager_id: Annotated[UUID | None, Field(alias="managerId")] = None
+    status: Literal["ACTIVE", "ARCHIVED"] | None = None
 
 
 class UploadDocument(BaseModel):
-    type: Type
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    type: Literal[
+        "OFFER_LETTER",
+        "ID_PROOF",
+        "ADDRESS_PROOF",
+        "PAN_CARD",
+        "BANK_DETAILS",
+        "EDUCATION_CERTIFICATE",
+        "EXPERIENCE_LETTER",
+        "PHOTO",
+        "OTHER",
+    ]
 
 
 class VerifyDocument(BaseModel):
-    note: constr(max_length=500) | None = None
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    note: Annotated[str | None, Field(max_length=500)] = None
 
 
 class FlagDocument(BaseModel):
-    note: constr(min_length=1, max_length=500)
-
-
-class Status3(Enum):
-    PENDING = 'PENDING'
-    VERIFIED = 'VERIFIED'
-    FLAGGED = 'FLAGGED'
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    note: Annotated[str, Field(max_length=500, min_length=1)]
 
 
 class DocumentSearchQuery(BaseModel):
-    page: conint(ge=1, le=9007199254740991) | None = 1
-    pageSize: conint(ge=1, le=100) | None = 20
-    employeeId: UUID | None = None
-    status: Status3 | None = None
-    type: Type | None = None
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    page: Annotated[int | None, Field(ge=1, le=9007199254740991)] = 1
+    page_size: Annotated[int | None, Field(alias="pageSize", ge=1, le=100)] = 20
+    employee_id: Annotated[UUID | None, Field(alias="employeeId")] = None
+    status: Literal["PENDING", "VERIFIED", "FLAGGED"] | None = None
+    type: (
+        Literal[
+            "OFFER_LETTER",
+            "ID_PROOF",
+            "ADDRESS_PROOF",
+            "PAN_CARD",
+            "BANK_DETAILS",
+            "EDUCATION_CERTIFICATE",
+            "EXPERIENCE_LETTER",
+            "PHOTO",
+            "OTHER",
+        ]
+        | None
+    ) = None
 
 
-class EmploymentType(Enum):
-    FULL_TIME = 'FULL_TIME'
-    PART_TIME = 'PART_TIME'
-    CONTRACT = 'CONTRACT'
-    INTERN = 'INTERN'
-
-
-class Status4(Enum):
-    ACTIVE = 'ACTIVE'
-    PROBATION = 'PROBATION'
+class Phone(RootModel[str]):
+    root: Annotated[str, Field(max_length=50)]
 
 
 class CreateEmployee(BaseModel):
-    firstName: constr(min_length=1, max_length=100)
-    lastName: constr(min_length=1, max_length=100)
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    first_name: Annotated[str, Field(alias="firstName", max_length=100, min_length=1)]
+    last_name: Annotated[str, Field(alias="lastName", max_length=100, min_length=1)]
     email: EmailStr
-    phone: constr(max_length=50) | None = None
-    dateOfBirth: date_aliased | None = None
-    jobTitle: constr(min_length=1, max_length=150)
-    departmentId: UUID
-    managerId: UUID | None = None
-    location: constr(min_length=1, max_length=100)
-    joiningDate: date_aliased
-    employmentType: EmploymentType
-    status: Status4 | None = 'PROBATION'
+    phone: Phone | None = None
+    date_of_birth: Annotated[date_aliased | None, Field(alias="dateOfBirth")] = None
+    job_title: Annotated[str, Field(alias="jobTitle", max_length=150, min_length=1)]
+    department_id: Annotated[UUID, Field(alias="departmentId")]
+    manager_id: Annotated[UUID | None, Field(alias="managerId")] = None
+    location: Annotated[str, Field(max_length=100, min_length=1)]
+    joining_date: Annotated[date_aliased, Field(alias="joiningDate")]
+    employment_type: Annotated[
+        Literal["FULL_TIME", "PART_TIME", "CONTRACT", "INTERN"], Field(alias="employmentType")
+    ]
+    status: Literal["ACTIVE", "PROBATION"] | None = "PROBATION"
 
 
 class UpdateEmployee(BaseModel):
-    firstName: constr(min_length=1, max_length=100) | None = None
-    lastName: constr(min_length=1, max_length=100) | None = None
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    first_name: Annotated[str | None, Field(alias="firstName", max_length=100, min_length=1)] = None
+    last_name: Annotated[str | None, Field(alias="lastName", max_length=100, min_length=1)] = None
     email: EmailStr | None = None
-    phone: constr(max_length=50) | None = None
-    dateOfBirth: date_aliased | None = None
-    jobTitle: constr(min_length=1, max_length=150) | None = None
-    departmentId: UUID | None = None
-    managerId: UUID | None = None
-    location: constr(min_length=1, max_length=100) | None = None
-    joiningDate: date_aliased | None = None
-    employmentType: EmploymentType | None = None
-    status: Status4 | None = 'PROBATION'
-    version: conint(ge=1, le=9007199254740991)
+    phone: Phone | None = None
+    date_of_birth: Annotated[date_aliased | None, Field(alias="dateOfBirth")] = None
+    job_title: Annotated[str | None, Field(alias="jobTitle", max_length=150, min_length=1)] = None
+    department_id: Annotated[UUID | None, Field(alias="departmentId")] = None
+    manager_id: Annotated[UUID | None, Field(alias="managerId")] = None
+    location: Annotated[str | None, Field(max_length=100, min_length=1)] = None
+    joining_date: Annotated[date_aliased | None, Field(alias="joiningDate")] = None
+    employment_type: Annotated[
+        Literal["FULL_TIME", "PART_TIME", "CONTRACT", "INTERN"] | None,
+        Field(alias="employmentType"),
+    ] = None
+    status: Literal["ACTIVE", "PROBATION"] | None = None
+    version: Annotated[int, Field(ge=1, le=9007199254740991)]
 
 
 class ArchiveEmployee(BaseModel):
-    version: conint(ge=1, le=9007199254740991)
-    reason: constr(max_length=500) | None = None
-
-
-class Status6(Enum):
-    ACTIVE = 'ACTIVE'
-    PROBATION = 'PROBATION'
-    ARCHIVED = 'ARCHIVED'
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    version: Annotated[int, Field(ge=1, le=9007199254740991)]
+    reason: Annotated[str | None, Field(max_length=500)] = None
 
 
 class EmployeeSearchQuery(BaseModel):
-    page: conint(ge=1, le=9007199254740991) | None = 1
-    pageSize: conint(ge=1, le=100) | None = 20
-    q: constr(max_length=100) | None = None
-    departmentId: UUID | None = None
-    managerId: UUID | None = None
-    location: constr(max_length=100) | None = None
-    status: Status6 | None = None
-
-
-class Type2(Enum):
-    ANNUAL = 'ANNUAL'
-    SICK = 'SICK'
-    CASUAL = 'CASUAL'
-    UNPAID = 'UNPAID'
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    page: Annotated[int | None, Field(ge=1, le=9007199254740991)] = 1
+    page_size: Annotated[int | None, Field(alias="pageSize", ge=1, le=100)] = 20
+    q: Annotated[str | None, Field(max_length=100)] = None
+    department_id: Annotated[UUID | None, Field(alias="departmentId")] = None
+    manager_id: Annotated[UUID | None, Field(alias="managerId")] = None
+    location: Annotated[str | None, Field(max_length=100)] = None
+    status: Literal["ACTIVE", "PROBATION", "ARCHIVED"] | None = None
 
 
 class CreateLeaveRequest(BaseModel):
-    employeeId: UUID | None = None
-    type: Type2
-    startDate: date_aliased
-    endDate: date_aliased
-    reason: constr(max_length=500) | None = None
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    employee_id: Annotated[UUID | None, Field(alias="employeeId")] = None
+    type: Literal["ANNUAL", "SICK", "CASUAL", "UNPAID"]
+    start_date: Annotated[date_aliased, Field(alias="startDate")]
+    end_date: Annotated[date_aliased, Field(alias="endDate")]
+    reason: Annotated[str | None, Field(max_length=500)] = None
 
 
 class ApproveLeave(BaseModel):
-    comment: constr(max_length=500) | None = None
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    comment: Annotated[str | None, Field(max_length=500)] = None
 
 
 class RejectLeave(BaseModel):
-    reason: constr(min_length=1, max_length=500)
-
-
-class View(Enum):
-    mine = 'mine'
-    approvals = 'approvals'
-    all = 'all'
-
-
-class Status7(Enum):
-    PENDING = 'PENDING'
-    APPROVED = 'APPROVED'
-    REJECTED = 'REJECTED'
-    CANCELLED = 'CANCELLED'
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    reason: Annotated[str, Field(max_length=500, min_length=1)]
 
 
 class LeaveSearchQuery(BaseModel):
-    page: conint(ge=1, le=9007199254740991) | None = 1
-    pageSize: conint(ge=1, le=100) | None = 20
-    view: View | None = 'all'
-    employeeId: UUID | None = None
-    status: Status7 | None = None
-    type: Type2 | None = None
-    from_: date_aliased | None = Field(None, alias='from')
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    page: Annotated[int | None, Field(ge=1, le=9007199254740991)] = 1
+    page_size: Annotated[int | None, Field(alias="pageSize", ge=1, le=100)] = 20
+    view: Literal["mine", "approvals", "all"] | None = "all"
+    employee_id: Annotated[UUID | None, Field(alias="employeeId")] = None
+    status: Literal["PENDING", "APPROVED", "REJECTED", "CANCELLED"] | None = None
+    type: Literal["ANNUAL", "SICK", "CASUAL", "UNPAID"] | None = None
+    from_: Annotated[date_aliased | None, Field(alias="from")] = None
     to: date_aliased | None = None
 
 
 class LeaveBalanceQuery(BaseModel):
-    year: conint(ge=2000, le=2100) | None = None
-
-
-class Status8(Enum):
-    PENDING = 'PENDING'
-    DONE = 'DONE'
-    SKIPPED = 'SKIPPED'
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    year: Annotated[int | None, Field(ge=2000, le=2100)] = None
 
 
 class UpdateOnboardingTask(BaseModel):
-    status: Status8 | None = None
-    notes: constr(max_length=1000) | None = None
-    dueDate: date_aliased | None = None
-
-
-class State(Enum):
-    active = 'active'
-    completed = 'completed'
-    all = 'all'
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    status: Literal["PENDING", "DONE", "SKIPPED"] | None = None
+    notes: Annotated[str | None, Field(max_length=1000)] = None
+    due_date: Annotated[date_aliased | None, Field(alias="dueDate")] = None
 
 
 class OnboardingSearchQuery(BaseModel):
-    page: conint(ge=1, le=9007199254740991) | None = 1
-    pageSize: conint(ge=1, le=100) | None = 20
-    state: State | None = 'active'
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    page: Annotated[int | None, Field(ge=1, le=9007199254740991)] = 1
+    page_size: Annotated[int | None, Field(alias="pageSize", ge=1, le=100)] = 20
+    state: Literal["active", "completed", "all"] | None = "active"
 
 
 class PayrollReportQuery(BaseModel):
-    month: constr(pattern=r'^\d{4}-(0[1-9]|1[0-2])$')
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    month: Annotated[str, Field(pattern="^\\d{4}-(0[1-9]|1[0-2])$")]
+
+
+class UserRef(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    id: UUID
+    name: str
+
+
+class EmployeeRef(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    id: UUID
+    employee_code: Annotated[str, Field(alias="employeeCode")]
+    first_name: Annotated[str, Field(alias="firstName")]
+    last_name: Annotated[str, Field(alias="lastName")]
+
+
+class Department(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    id: UUID
+    name: str
+
+
+class Employee(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    id: UUID
+    employee_code: Annotated[str, Field(alias="employeeCode")]
+    first_name: Annotated[str, Field(alias="firstName")]
+    last_name: Annotated[str, Field(alias="lastName")]
+    email: str
+    phone: str | None
+    date_of_birth: Annotated[date_aliased | None, Field(alias="dateOfBirth")]
+    job_title: Annotated[str, Field(alias="jobTitle")]
+    location: str
+    joining_date: Annotated[date_aliased, Field(alias="joiningDate")]
+    employment_type: Annotated[
+        Literal["FULL_TIME", "PART_TIME", "CONTRACT", "INTERN"], Field(alias="employmentType")
+    ]
+    status: Literal["ACTIVE", "PROBATION", "ARCHIVED"]
+    department: Department | None
+    manager: EmployeeRef | None
+    version: Annotated[int, Field(ge=-9007199254740991, le=9007199254740991)]
+    created_at: Annotated[AwareDatetime, Field(alias="createdAt")]
+    updated_at: Annotated[AwareDatetime, Field(alias="updatedAt")]
+
+
+class EmployeePage(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    items: list[Employee]
+    total: Annotated[int, Field(ge=-9007199254740991, le=9007199254740991)]
+    page: Annotated[int, Field(ge=-9007199254740991, le=9007199254740991)]
+    page_size: Annotated[int, Field(alias="pageSize", ge=-9007199254740991, le=9007199254740991)]
+
+
+class LeaveProblem(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    code: Literal[
+        "END_BEFORE_START",
+        "CROSSES_YEAR",
+        "TOO_LONG",
+        "TOO_FAR_IN_PAST",
+        "BEFORE_JOINING",
+        "NO_WORKING_DAYS",
+        "OVERLAP",
+        "INSUFFICIENT_BALANCE",
+        "EMPLOYEE_ARCHIVED",
+    ]
+    message: str
+
+
+class LeaveBalance(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    type: Literal["ANNUAL", "SICK", "CASUAL", "UNPAID"]
+    year: Annotated[int, Field(ge=-9007199254740991, le=9007199254740991)]
+    entitled: float | None
+    used: float
+    pending: float
+    available: float | None
+
+
+class NonWorkingDay(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    date: date_aliased
+    reason: str
+
+
+class LeavePreview(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    working_days: Annotated[float, Field(alias="workingDays")]
+    non_working_days: Annotated[list[NonWorkingDay], Field(alias="nonWorkingDays")]
+    balance: LeaveBalance | None
+    balance_after: Annotated[float | None, Field(alias="balanceAfter")]
+    problems: list[LeaveProblem]
+
+
+class LeaveRequest(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    id: UUID
+    employee: EmployeeRef
+    type: Literal["ANNUAL", "SICK", "CASUAL", "UNPAID"]
+    start_date: Annotated[date_aliased, Field(alias="startDate")]
+    end_date: Annotated[date_aliased, Field(alias="endDate")]
+    days: float
+    reason: str | None
+    status: Literal["PENDING", "APPROVED", "REJECTED", "CANCELLED"]
+    requested_by: Annotated[UserRef, Field(alias="requestedBy")]
+    decided_by: Annotated[UserRef | None, Field(alias="decidedBy")]
+    decided_at: Annotated[AwareDatetime | None, Field(alias="decidedAt")]
+    decision_comment: Annotated[str | None, Field(alias="decisionComment")]
+    created_at: Annotated[AwareDatetime, Field(alias="createdAt")]
+    can_decide: Annotated[bool, Field(alias="canDecide")]
+    can_cancel: Annotated[bool, Field(alias="canCancel")]
+
+
+class LeaveRequestPage(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    items: list[LeaveRequest]
+    total: Annotated[int, Field(ge=-9007199254740991, le=9007199254740991)]
+    page: Annotated[int, Field(ge=-9007199254740991, le=9007199254740991)]
+    page_size: Annotated[int, Field(alias="pageSize", ge=-9007199254740991, le=9007199254740991)]
+
+
+class AttendanceAnomaly(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    code: Literal[
+        "MISSING_RECORD",
+        "ABSENT_WITHOUT_LEAVE",
+        "WORKED_ON_LEAVE",
+        "LATE_CHECK_IN",
+        "MISSING_CHECK_OUT",
+        "SHORT_DAY",
+    ]
+    message: str
+
+
+class AttendanceEntry(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    status: Literal["PRESENT", "HALF_DAY", "ABSENT"]
+    check_in: Annotated[str | None, Field(alias="checkIn")]
+    check_out: Annotated[str | None, Field(alias="checkOut")]
+
+
+class Record(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    status: Literal["PRESENT", "HALF_DAY", "ABSENT"]
+    check_in: Annotated[str | None, Field(alias="checkIn")]
+    check_out: Annotated[str | None, Field(alias="checkOut")]
+    id: UUID
+    source: Literal["SYSTEM", "MANUAL", "CORRECTION"]
+    correction_reason: Annotated[str | None, Field(alias="correctionReason")]
+
+
+class Leave(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    id: UUID
+    type: Literal["ANNUAL", "SICK", "CASUAL", "UNPAID"]
+
+
+class AttendanceDay(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    date: date_aliased
+    employee: EmployeeRef
+    day_status: Annotated[
+        Literal[
+            "PRESENT",
+            "HALF_DAY",
+            "ABSENT",
+            "ON_LEAVE",
+            "HOLIDAY",
+            "WEEKEND",
+            "MISSING",
+            "NOT_EMPLOYED",
+            "UPCOMING",
+        ],
+        Field(alias="dayStatus"),
+    ]
+    record: Record | None
+    worked_minutes: Annotated[float | None, Field(alias="workedMinutes")]
+    leave: Leave | None
+    holiday: str | None
+    anomalies: list[AttendanceAnomaly]
+    pending_correction: Annotated[bool, Field(alias="pendingCorrection")]
+
+
+class MonthlyAttendanceRow(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    employee: EmployeeRef
+    working_days: Annotated[float, Field(alias="workingDays")]
+    present: float
+    half_days: Annotated[float, Field(alias="halfDays")]
+    absent: float
+    on_leave: Annotated[float, Field(alias="onLeave")]
+    missing: float
+    anomalies: float
+
+
+class Anomaly(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    code: Literal[
+        "MISSING_RECORD",
+        "ABSENT_WITHOUT_LEAVE",
+        "WORKED_ON_LEAVE",
+        "LATE_CHECK_IN",
+        "MISSING_CHECK_OUT",
+        "SHORT_DAY",
+    ]
+    message: str
+    date: date_aliased
+    employee: EmployeeRef
+
+
+class MonthlyAttendance(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    month: Annotated[str, Field(pattern="^\\d{4}-(0[1-9]|1[0-2])$")]
+    working_days: Annotated[float, Field(alias="workingDays")]
+    rows: list[MonthlyAttendanceRow]
+    anomalies: list[Anomaly]
+    days: list[AttendanceDay] | None = None
+
+
+class OnboardingTask(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    id: UUID
+    title: str
+    description: str | None
+    category: Literal["PAPERWORK", "DOCUMENTS", "IT_SETUP", "ORIENTATION", "TEAM"]
+    assignee: Literal["HR", "MANAGER", "EMPLOYEE", "IT"]
+    due_date: Annotated[date_aliased, Field(alias="dueDate")]
+    status: Literal["PENDING", "DONE", "SKIPPED"]
+    required_document_type: Annotated[
+        Literal[
+            "OFFER_LETTER",
+            "ID_PROOF",
+            "ADDRESS_PROOF",
+            "PAN_CARD",
+            "BANK_DETAILS",
+            "EDUCATION_CERTIFICATE",
+            "EXPERIENCE_LETTER",
+            "PHOTO",
+            "OTHER",
+        ]
+        | None,
+        Field(alias="requiredDocumentType"),
+    ]
+    completed_at: Annotated[AwareDatetime | None, Field(alias="completedAt")]
+    completed_by: Annotated[UserRef | None, Field(alias="completedBy")]
+    notes: str | None
+    is_overdue: Annotated[bool, Field(alias="isOverdue")]
+    can_update: Annotated[bool, Field(alias="canUpdate")]
+
+
+class OnboardingProgress(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    total: Annotated[int, Field(ge=-9007199254740991, le=9007199254740991)]
+    done: Annotated[int, Field(ge=-9007199254740991, le=9007199254740991)]
+    skipped: Annotated[int, Field(ge=-9007199254740991, le=9007199254740991)]
+    overdue: Annotated[int, Field(ge=-9007199254740991, le=9007199254740991)]
+    percent: float
+
+
+class MissingInfo(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    code: str
+    message: str
+
+
+class Employee1(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    id: UUID
+    employee_code: Annotated[str, Field(alias="employeeCode")]
+    first_name: Annotated[str, Field(alias="firstName")]
+    last_name: Annotated[str, Field(alias="lastName")]
+    job_title: Annotated[str, Field(alias="jobTitle")]
+    joining_date: Annotated[date_aliased, Field(alias="joiningDate")]
+    department_name: Annotated[str | None, Field(alias="departmentName")]
+
+
+class EmployeeOnboarding(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    employee: Employee1
+    started: bool
+    tasks: list[OnboardingTask]
+    progress: OnboardingProgress
+    missing_info: Annotated[list[MissingInfo], Field(alias="missingInfo")]
+    can_start: Annotated[bool, Field(alias="canStart")]
+
+
+class EmployeeDocument(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    id: UUID
+    employee: EmployeeRef
+    type: Literal[
+        "OFFER_LETTER",
+        "ID_PROOF",
+        "ADDRESS_PROOF",
+        "PAN_CARD",
+        "BANK_DETAILS",
+        "EDUCATION_CERTIFICATE",
+        "EXPERIENCE_LETTER",
+        "PHOTO",
+        "OTHER",
+    ]
+    file_name: Annotated[str, Field(alias="fileName")]
+    mime_type: Annotated[str, Field(alias="mimeType")]
+    size_bytes: Annotated[int, Field(alias="sizeBytes", ge=-9007199254740991, le=9007199254740991)]
+    status: Literal["PENDING", "VERIFIED", "FLAGGED"]
+    uploaded_by: Annotated[UserRef, Field(alias="uploadedBy")]
+    uploaded_at: Annotated[AwareDatetime, Field(alias="uploadedAt")]
+    reviewed_by: Annotated[UserRef | None, Field(alias="reviewedBy")]
+    reviewed_at: Annotated[AwareDatetime | None, Field(alias="reviewedAt")]
+    review_note: Annotated[str | None, Field(alias="reviewNote")]
+    can_review: Annotated[bool, Field(alias="canReview")]
+
+
+class PayrollFlag(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    code: Literal[
+        "MISSING_BANK_DETAILS",
+        "BANK_DETAILS_FLAGGED",
+        "MISSING_PAN",
+        "UNRESOLVED_ATTENDANCE",
+        "PENDING_LEAVE",
+        "PENDING_CORRECTION",
+    ]
+    message: str
+
+
+class PayrollRow(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    employee: EmployeeRef
+    department: str | None
+    employment_type: Annotated[
+        Literal["FULL_TIME", "PART_TIME", "CONTRACT", "INTERN"], Field(alias="employmentType")
+    ]
+    joining_date: Annotated[date_aliased, Field(alias="joiningDate")]
+    new_joiner: Annotated[bool, Field(alias="newJoiner")]
+    working_days: Annotated[float, Field(alias="workingDays")]
+    days_worked: Annotated[float, Field(alias="daysWorked")]
+    paid_leave_days: Annotated[float, Field(alias="paidLeaveDays")]
+    unpaid_leave_days: Annotated[float, Field(alias="unpaidLeaveDays")]
+    unexplained_days: Annotated[float, Field(alias="unexplainedDays")]
+    lop_days: Annotated[float, Field(alias="lopDays")]
+    payable_days: Annotated[float, Field(alias="payableDays")]
+    flags: list[PayrollFlag]
+
+
+class PayrollChange(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    employee: EmployeeRef
+    kind: Literal["JOINED", "EXITED", "CHANGED"]
+    summary: str
+    date: date_aliased
+    by: UserRef | None
+
+
+class Summary(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    headcount: Annotated[int, Field(ge=-9007199254740991, le=9007199254740991)]
+    new_joiners: Annotated[
+        int, Field(alias="newJoiners", ge=-9007199254740991, le=9007199254740991)
+    ]
+    exits: Annotated[int, Field(ge=-9007199254740991, le=9007199254740991)]
+    employees_with_flags: Annotated[
+        int, Field(alias="employeesWithFlags", ge=-9007199254740991, le=9007199254740991)
+    ]
+    lop_days: Annotated[float, Field(alias="lopDays")]
+
+
+class PayrollReport(BaseModel):
+    model_config = ConfigDict(
+        populate_by_name=True,
+    )
+    month: str
+    through: date_aliased
+    complete: bool
+    summary: Summary
+    rows: list[PayrollRow]
+    changes: list[PayrollChange]

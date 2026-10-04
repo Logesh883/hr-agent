@@ -372,8 +372,7 @@ def _department_record(department: Department) -> dict[str, str]:
 def _ambiguity_question(call: ToolCall, candidates: list[dict[str, str]]) -> str:
     if call.name == "search_departments":
         lines = [
-            f"{index}. {item['name']} ({item['code']})"
-            for index, item in enumerate(candidates, 1)
+            f"{index}. {item['name']} ({item['code']})" for index, item in enumerate(candidates, 1)
         ]
         return f"I found multiple matching departments:\n{chr(10).join(lines)}\nWhich one?"
     lines = [

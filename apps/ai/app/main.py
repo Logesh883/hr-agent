@@ -9,6 +9,7 @@ from app import agent_routes, llm_routes
 from app.log import configure_logging
 from app.settings import Settings, get_settings
 from llm.base import LLMClient
+from tracing.langfuse import TraceExporter, create_exporter
 
 router = APIRouter()
 
@@ -28,6 +29,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     llm: LLMClient | None = getattr(app.state, "llm", None)
     if llm:
         await llm.aclose()
+    exporter: TraceExporter = app.state.trace_exporter
+    await exporter.aclose()
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -36,6 +39,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app = FastAPI(title="HR AI service", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
     app.state.llm = None
+    app.state.trace_exporter = create_exporter(settings)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[settings.web_origin],

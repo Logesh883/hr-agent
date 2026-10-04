@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { paginationQuery, type UserRef } from './common.js';
-import type { EmployeeRef } from './employee.js';
+import { isoDateTime, paginationQuery, userRefSchema } from './common.js';
+import { employeeRefSchema } from './employee.js';
 
 export const DOCUMENT_TYPES = [
   'OFFER_LETTER',
@@ -71,19 +71,20 @@ export const documentSearchSchema = paginationQuery.extend({
 export type DocumentSearchQuery = z.output<typeof documentSearchSchema>;
 export type DocumentSearchParams = Partial<DocumentSearchQuery>;
 
-export interface EmployeeDocument {
-  id: string;
-  employee: EmployeeRef;
-  type: DocumentType;
-  fileName: string;
-  mimeType: string;
-  sizeBytes: number;
-  status: DocumentStatus;
-  uploadedBy: UserRef;
-  uploadedAt: string;
-  reviewedBy: UserRef | null;
-  reviewedAt: string | null;
-  reviewNote: string | null;
+export const employeeDocumentSchema = z.object({
+  id: z.uuid(),
+  employee: employeeRefSchema,
+  type: z.enum(DOCUMENT_TYPES),
+  fileName: z.string(),
+  mimeType: z.string(),
+  sizeBytes: z.number().int(),
+  status: z.enum(DOCUMENT_STATUSES),
+  uploadedBy: userRefSchema,
+  uploadedAt: isoDateTime,
+  reviewedBy: userRefSchema.nullable(),
+  reviewedAt: isoDateTime.nullable(),
+  reviewNote: z.string().nullable(),
   /** Whether the caller may verify or flag it (HR, and never their own). */
-  canReview: boolean;
-}
+  canReview: z.boolean(),
+});
+export type EmployeeDocument = z.infer<typeof employeeDocumentSchema>;

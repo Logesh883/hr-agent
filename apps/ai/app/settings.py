@@ -54,6 +54,12 @@ class Settings(BaseSettings):
     llm_timeout: float = 60.0
     llm_max_retries: int = 3
 
+    # Langfuse Cloud tracing (https://cloud.langfuse.com → project → API keys). Leave the keys
+    # empty to keep traces local; set both to export one masked trace per agent request.
+    langfuse_host: str = "https://cloud.langfuse.com"
+    langfuse_public_key: str = ""
+    langfuse_secret_key: SecretStr | None = None
+
 
 @lru_cache
 def get_settings() -> Settings:

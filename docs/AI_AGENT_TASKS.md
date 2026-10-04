@@ -200,9 +200,9 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
 - Traces and spans: seeing every LLM call and tool call in a run.
 
 **Build**
-- [ ] A3.1 *(HR API)* Export JSON Schemas from `@hr/contracts` (`z.toJSONSchema`), then generate pydantic models from them (`datamodel-code-generator`). Add a CI check that regenerating produces no diff, so Python and TypeScript can't drift. **Started:** request/query validators are exported and generated; response types that are plain TypeScript interfaces still need runtime schemas and export coverage.
-- [ ] A3.2 General tool framework: `Tool(name, description, input_model, risk, run(ctx, args))`, a registry, rendering of schemas for the LLM, pydantic validation **before** execution, a uniform `ToolResult` (ok / data / an error message the model can use), and per-tool timeouts. A2.4 has a small, bounded tool loop for entity lookup; M3 generalizes it.
-- [ ] A3.3 Read-only tools, each wrapping an existing endpoint with the user's token:
+- [x] A3.1 *(HR API)* Export JSON Schemas from `@hr/contracts` (`z.toJSONSchema`), then generate pydantic models from them (`datamodel-code-generator`). Add a CI check that regenerating produces no diff, so Python and TypeScript can't drift. (30 request/query and 23 response schemas in one Zod registry; response types the agent reads are now Zod schemas with inferred TypeScript types; `apps/ai/contracts/generated.py` passes strict pyright; `.github/workflows/contracts.yml`.)
+- [x] A3.2 General tool framework: `Tool(name, description, input_model, risk, run(ctx, args))`, a registry, rendering of schemas for the LLM, pydantic validation **before** execution, a uniform `ToolResult` (ok / data / an error message the model can use), and per-tool timeouts. A2.4 has a small, bounded tool loop for entity lookup; M3 generalizes it. (`apps/ai/tools/base.py`, `tools/registry.py`)
+- [x] A3.3 Read-only tools, each wrapping an existing endpoint with the user's token (`apps/ai/tools/hr_read.py`):
 
   | Tool | Endpoint |
   | --- | --- |
@@ -216,11 +216,11 @@ The agent mostly uses endpoints that already exist. A few small TypeScript chang
   | `list_employee_documents` | `GET /employees/:id/documents` |
   | `get_payroll_readiness` | `GET /payroll/preparation` |
 
-- [ ] A3.4 The agent loop without a framework: messages → LLM with tools → execute calls → append results → repeat until an answer or 8 steps. Returns the answer plus a step-by-step trace.
-- [ ] A3.5 RBAC through tools: ask the same question as the manager and as the employee. The API's 403/404 become clear tool errors ("You don't have access to that employee"). Write tests for it.
-- [ ] A3.6 Langfuse Cloud tracing: one trace per request, spans for LLM and tool calls, token usage; tokens and personal data masked.
-- [ ] A3.7 Tests: `FakeLLM` scripted tool calls + respx-mocked API; one integration test against the real API on `hr_test`.
-- [ ] A3.8 `POST /agent/ask` for read-only questions: "How many annual leave days does Sneha have left?", "Who on my team has attendance anomalies this month?", "Why can't Sneha take 20 days off in February?"
+- [x] A3.4 The agent loop without a framework: messages → LLM with tools → execute calls → append results → repeat until an answer or 8 steps. Returns the answer plus a step-by-step trace. (`apps/ai/agent/loop.py`: parallel tool calls, 8-step limit, 60k-token budget; `uv run hr-ai ask "…" --login EMAIL`.)
+- [x] A3.5 RBAC through tools: ask the same question as the manager and as the employee. The API's 403/404 become clear tool errors ("You don't have access to that employee"). Write tests for it. (`tests/test_rbac_tools.py`, plus the real API in `tests/test_integration_hr_api.py`.)
+- [ ] A3.6 Langfuse Cloud tracing: one trace per request, spans for LLM and tool calls, token usage; tokens and personal data masked. **Built and unit-tested** (`apps/ai/tracing/`: in-memory trace, masking of credentials, contact details and names, httpx exporter to the ingestion API). Still to do: set `LANGFUSE_PUBLIC_KEY`/`LANGFUSE_SECRET_KEY` and confirm a masked trace appears in Langfuse Cloud.
+- [x] A3.7 Tests: `FakeLLM` scripted tool calls + respx-mocked API; one integration test against the real API on `hr_test`. (Integration tests run when `HR_TEST_API_URL` is set.)
+- [x] A3.8 `POST /agent/ask` for read-only questions: "How many annual leave days does Sneha have left?", "Who on my team has attendance anomalies this month?", "Why can't Sneha take 20 days off in February?"
 
 **Check yourself**
 - Draw the loop from memory. Where exactly does your code, not the model, make a decision?

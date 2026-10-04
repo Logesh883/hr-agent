@@ -5,6 +5,7 @@ uv run hr-ai chat "What is LOP?"       # one message to the configured model
 uv run hr-ai models                    # model ids the configured provider offers
 uv run hr-ai parse "Approve Sneha's leave" --role MANAGER   # intent + entities
 uv run hr-ai parse "Approve Sneha's leave" --login manager@hr.local   # + tool-based lookups
+uv run hr-ai ask "How many annual leave days does Sneha have left?" --login hr@hr.local
 """
 
 import argparse
@@ -18,6 +19,8 @@ from typing import cast, get_args
 import httpx
 from pydantic import ValidationError
 
+from agent.ask import answer_question, new_ask_trace
+from agent.loop import AgentRun
 from app.hr_client import HrApiClient, HrApiError, HrApiUnavailableError
 from app.llm_routes import build_messages
 from app.log import configure_logging
@@ -30,6 +33,8 @@ from llm.base import LLMError
 from llm.factory import LLMConfigError, create_llm_client
 from llm.openai_compat import OpenAICompatibleClient
 from llm.types import StreamChunk
+from tools.base import ToolContext
+from tracing.langfuse import create_exporter
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -62,11 +67,25 @@ def main(argv: list[str] | None = None) -> None:
         "uses their permissions for tool-based employee, department and leave lookups",
     )
 
+    ask = commands.add_parser("ask", help="answer a read-only HR question with tools")
+    ask.add_argument("question")
+    ask.add_argument(
+        "--login",
+        metavar="EMAIL",
+        required=True,
+        help="ask as this HR API user (password from HR_PASSWORD or a prompt)",
+    )
+    ask.add_argument("--today", type=date.fromisoformat, help="YYYY-MM-DD; default: today")
+    ask.add_argument("--model", help="override LLM_MODEL")
+    ask.add_argument("--quiet", action="store_true", help="print the answer only, not the steps")
+
     args = parser.parse_args(argv)
     if args.command == "serve":
         _serve(reload=args.reload)
     elif args.command == "parse":
         sys.exit(asyncio.run(_parse(args)))
+    elif args.command == "ask":
+        sys.exit(asyncio.run(_ask(args)))
     elif args.command == "models":
         sys.exit(asyncio.run(_models(args.filter)))
     else:
@@ -197,6 +216,64 @@ async def _parse(args: argparse.Namespace) -> int:
         finally:
             await llm.aclose()
     return 0
+
+
+async def _ask(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    if args.model:
+        settings = settings.model_copy(update={"llm_model": args.model})
+    configure_logging(settings.log_level)
+    try:
+        llm = create_llm_client(settings)
+    except LLMConfigError as error:
+        print(error, file=sys.stderr)
+        return 2
+    exporter = create_exporter(settings)
+    async with httpx.AsyncClient(
+        base_url=settings.hr_api_url, timeout=settings.hr_api_timeout
+    ) as http:
+        try:
+            password = os.environ.get("HR_PASSWORD") or getpass.getpass(
+                f"Password for {args.login}: "
+            )
+            login = await HrApiClient(http).login(args.login, password)
+            print(f"signed in as {login.user.name} ({login.user.role})", file=sys.stderr)
+            ctx = ToolContext(
+                hr=HrApiClient(http, login.access_token),
+                user=login.user,
+                today=args.today or date.today(),
+            )
+            trace = new_ask_trace(args.question, ctx)
+            run = await answer_question(llm, ctx, args.question, trace=trace)
+            if not args.quiet:
+                _print_steps(run)
+            print(run.answer)
+            await exporter.export(trace)
+        except (LLMError, HrApiError, HrApiUnavailableError) as error:
+            print(f"error: {error}", file=sys.stderr)
+            return 1
+        finally:
+            await llm.aclose()
+            await exporter.aclose()
+    return 0
+
+
+def _print_steps(run: AgentRun) -> None:
+    """The run as a readable trace on stderr: each LLM turn, then the tools it called."""
+    for step in run.steps:
+        usage = step.usage
+        print(
+            f"[step {step.step}] {usage.prompt_tokens} in / {usage.completion_tokens} out "
+            f"tokens · {step.latency_ms:.0f} ms",
+            file=sys.stderr,
+        )
+        for call in step.tool_calls:
+            outcome = "ok" if call.ok else f"error: {call.error}"
+            print(f"  → {call.tool}({call.arguments}) {outcome}", file=sys.stderr)
+    print(
+        f"[{run.stop_reason} · {run.usage.total_tokens} tokens · trace {run.trace_id}]\n",
+        file=sys.stderr,
+    )
 
 
 async def _models(text: str) -> int:

@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import { isoDate, paginationQuery, type UserRef } from './common.js';
-import type { EmployeeRef } from './employee.js';
+import { isoDate, isoDateTime, paginationQuery, userRefSchema } from './common.js';
+import { employeeRefSchema } from './employee.js';
 
 export const LEAVE_TYPES = ['ANNUAL', 'SICK', 'CASUAL', 'UNPAID'] as const;
 export type LeaveType = (typeof LEAVE_TYPES)[number];
@@ -85,48 +85,52 @@ export const LEAVE_PROBLEM_CODES = [
 export type LeaveProblemCode = (typeof LEAVE_PROBLEM_CODES)[number];
 
 /** A reason a request can't be made or approved, in words an HR user (or the AI agent) can relay. */
-export interface LeaveProblem {
-  code: LeaveProblemCode;
-  message: string;
-}
+export const leaveProblemSchema = z.object({
+  code: z.enum(LEAVE_PROBLEM_CODES),
+  message: z.string(),
+});
+export type LeaveProblem = z.infer<typeof leaveProblemSchema>;
 
-export interface LeaveBalance {
-  type: LeaveType;
-  year: number;
+export const leaveBalanceSchema = z.object({
+  type: z.enum(LEAVE_TYPES),
+  year: z.number().int(),
   /** null when the type has no balance (unpaid). */
-  entitled: number | null;
-  used: number;
-  pending: number;
-  available: number | null;
-}
+  entitled: z.number().nullable(),
+  used: z.number(),
+  pending: z.number(),
+  available: z.number().nullable(),
+});
+export type LeaveBalance = z.infer<typeof leaveBalanceSchema>;
 
-export interface LeavePreview {
-  workingDays: number;
+export const leavePreviewSchema = z.object({
+  workingDays: z.number(),
   /** Weekends and holidays inside the range that don't count. */
-  nonWorkingDays: { date: string; reason: string }[];
-  balance: LeaveBalance | null;
-  balanceAfter: number | null;
-  problems: LeaveProblem[];
-}
+  nonWorkingDays: z.array(z.object({ date: isoDate, reason: z.string() })),
+  balance: leaveBalanceSchema.nullable(),
+  balanceAfter: z.number().nullable(),
+  problems: z.array(leaveProblemSchema),
+});
+export type LeavePreview = z.infer<typeof leavePreviewSchema>;
 
-export interface LeaveRequest {
-  id: string;
-  employee: EmployeeRef;
-  type: LeaveType;
-  startDate: string;
-  endDate: string;
-  days: number;
-  reason: string | null;
-  status: LeaveStatus;
-  requestedBy: UserRef;
-  decidedBy: UserRef | null;
-  decidedAt: string | null;
-  decisionComment: string | null;
-  createdAt: string;
+export const leaveRequestRecordSchema = z.object({
+  id: z.uuid(),
+  employee: employeeRefSchema,
+  type: z.enum(LEAVE_TYPES),
+  startDate: isoDate,
+  endDate: isoDate,
+  days: z.number(),
+  reason: z.string().nullable(),
+  status: z.enum(LEAVE_STATUSES),
+  requestedBy: userRefSchema,
+  decidedBy: userRefSchema.nullable(),
+  decidedAt: isoDateTime.nullable(),
+  decisionComment: z.string().nullable(),
+  createdAt: isoDateTime,
   /** Whether the caller may approve/reject or cancel this request. */
-  canDecide: boolean;
-  canCancel: boolean;
-}
+  canDecide: z.boolean(),
+  canCancel: z.boolean(),
+});
+export type LeaveRequest = z.infer<typeof leaveRequestRecordSchema>;
 
 export interface Holiday {
   date: string;

@@ -3,13 +3,11 @@
   "$defs": {
     "LoginRequest": {
       "title": "LoginRequest",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "email": {
           "type": "string",
-          "format": "email",
-          "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          "format": "email"
         },
         "password": {
           "type": "string",
@@ -23,7 +21,6 @@
     },
     "ChangePassword": {
       "title": "ChangePassword",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "currentPassword": {
@@ -51,7 +48,6 @@
     },
     "GrantAccess": {
       "title": "GrantAccess",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "role": {
@@ -70,7 +66,6 @@
     },
     "UpdateAccess": {
       "title": "UpdateAccess",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "role": {
@@ -89,18 +84,15 @@
     },
     "DailyAttendanceQuery": {
       "title": "DailyAttendanceQuery",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "date": {
           "type": "string",
-          "format": "date",
-          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          "format": "date"
         },
         "departmentId": {
           "type": "string",
-          "format": "uuid",
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          "format": "uuid"
         }
       },
       "required": [
@@ -109,7 +101,6 @@
     },
     "MonthlyAttendanceQuery": {
       "title": "MonthlyAttendanceQuery",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "month": {
@@ -118,13 +109,11 @@
         },
         "departmentId": {
           "type": "string",
-          "format": "uuid",
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          "format": "uuid"
         },
         "employeeId": {
           "type": "string",
-          "format": "uuid",
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          "format": "uuid"
         }
       },
       "required": [
@@ -133,18 +122,15 @@
     },
     "ProposeCorrection": {
       "title": "ProposeCorrection",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "employeeId": {
           "type": "string",
-          "format": "uuid",
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          "format": "uuid"
         },
         "date": {
           "type": "string",
-          "format": "date",
-          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          "format": "date"
         },
         "status": {
           "type": "string",
@@ -191,7 +177,6 @@
     },
     "ApproveCorrection": {
       "title": "ApproveCorrection",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "comment": {
@@ -202,7 +187,6 @@
     },
     "RejectCorrection": {
       "title": "RejectCorrection",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "reason": {
@@ -217,7 +201,6 @@
     },
     "CorrectionSearchQuery": {
       "title": "CorrectionSearchQuery",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "page": {
@@ -242,14 +225,12 @@
         },
         "employeeId": {
           "type": "string",
-          "format": "uuid",
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          "format": "uuid"
         }
       }
     },
     "AuditSearchQuery": {
       "title": "AuditSearchQuery",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "page": {
@@ -280,19 +261,16 @@
         },
         "entityId": {
           "type": "string",
-          "format": "uuid",
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          "format": "uuid"
         },
         "actorId": {
           "type": "string",
-          "format": "uuid",
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          "format": "uuid"
         }
       }
     },
     "PublishPolicy": {
       "title": "PublishPolicy",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "title": {
@@ -315,8 +293,7 @@
         },
         "effectiveFrom": {
           "type": "string",
-          "format": "date",
-          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          "format": "date"
         },
         "summary": {
           "type": "string",
@@ -331,7 +308,6 @@
     },
     "CreateDepartment": {
       "title": "CreateDepartment",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "name": {
@@ -347,8 +323,7 @@
           "anyOf": [
             {
               "type": "string",
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "format": "uuid"
             },
             {
               "type": "null"
@@ -363,7 +338,6 @@
     },
     "UpdateDepartment": {
       "title": "UpdateDepartment",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "name": {
@@ -379,8 +353,7 @@
           "anyOf": [
             {
               "type": "string",
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "format": "uuid"
             },
             {
               "type": "null"
@@ -398,7 +371,6 @@
     },
     "UploadDocument": {
       "title": "UploadDocument",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "type": {
@@ -422,7 +394,6 @@
     },
     "VerifyDocument": {
       "title": "VerifyDocument",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "note": {
@@ -433,7 +404,6 @@
     },
     "FlagDocument": {
       "title": "FlagDocument",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "note": {
@@ -448,7 +418,6 @@
     },
     "DocumentSearchQuery": {
       "title": "DocumentSearchQuery",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "page": {
@@ -465,8 +434,7 @@
         },
         "employeeId": {
           "type": "string",
-          "format": "uuid",
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          "format": "uuid"
         },
         "status": {
           "type": "string",
@@ -494,7 +462,6 @@
     },
     "CreateEmployee": {
       "title": "CreateEmployee",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "firstName": {
@@ -509,8 +476,7 @@
         },
         "email": {
           "type": "string",
-          "format": "email",
-          "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          "format": "email"
         },
         "phone": {
           "anyOf": [
@@ -527,8 +493,7 @@
           "anyOf": [
             {
               "type": "string",
-              "format": "date",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+              "format": "date"
             },
             {
               "type": "null"
@@ -542,15 +507,13 @@
         },
         "departmentId": {
           "type": "string",
-          "format": "uuid",
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          "format": "uuid"
         },
         "managerId": {
           "anyOf": [
             {
               "type": "string",
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "format": "uuid"
             },
             {
               "type": "null"
@@ -564,8 +527,7 @@
         },
         "joiningDate": {
           "type": "string",
-          "format": "date",
-          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          "format": "date"
         },
         "employmentType": {
           "type": "string",
@@ -598,7 +560,6 @@
     },
     "UpdateEmployee": {
       "title": "UpdateEmployee",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "firstName": {
@@ -613,8 +574,7 @@
         },
         "email": {
           "type": "string",
-          "format": "email",
-          "pattern": "^(?:[A-Za-z0-9_'+\\-]+\\.)*[A-Za-z0-9_'+\\-]*[A-Za-z0-9_+-]@(?:[A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$"
+          "format": "email"
         },
         "phone": {
           "anyOf": [
@@ -631,8 +591,7 @@
           "anyOf": [
             {
               "type": "string",
-              "format": "date",
-              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+              "format": "date"
             },
             {
               "type": "null"
@@ -646,15 +605,13 @@
         },
         "departmentId": {
           "type": "string",
-          "format": "uuid",
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          "format": "uuid"
         },
         "managerId": {
           "anyOf": [
             {
               "type": "string",
-              "format": "uuid",
-              "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+              "format": "uuid"
             },
             {
               "type": "null"
@@ -668,8 +625,7 @@
         },
         "joiningDate": {
           "type": "string",
-          "format": "date",
-          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          "format": "date"
         },
         "employmentType": {
           "type": "string",
@@ -699,7 +655,6 @@
     },
     "ArchiveEmployee": {
       "title": "ArchiveEmployee",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "version": {
@@ -718,7 +673,6 @@
     },
     "EmployeeSearchQuery": {
       "title": "EmployeeSearchQuery",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "page": {
@@ -739,13 +693,11 @@
         },
         "departmentId": {
           "type": "string",
-          "format": "uuid",
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          "format": "uuid"
         },
         "managerId": {
           "type": "string",
-          "format": "uuid",
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          "format": "uuid"
         },
         "location": {
           "type": "string",
@@ -763,13 +715,11 @@
     },
     "CreateLeaveRequest": {
       "title": "CreateLeaveRequest",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "employeeId": {
           "type": "string",
-          "format": "uuid",
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          "format": "uuid"
         },
         "type": {
           "type": "string",
@@ -782,13 +732,11 @@
         },
         "startDate": {
           "type": "string",
-          "format": "date",
-          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          "format": "date"
         },
         "endDate": {
           "type": "string",
-          "format": "date",
-          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          "format": "date"
         },
         "reason": {
           "type": "string",
@@ -803,7 +751,6 @@
     },
     "ApproveLeave": {
       "title": "ApproveLeave",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "comment": {
@@ -814,7 +761,6 @@
     },
     "RejectLeave": {
       "title": "RejectLeave",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "reason": {
@@ -829,7 +775,6 @@
     },
     "LeaveSearchQuery": {
       "title": "LeaveSearchQuery",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "page": {
@@ -855,8 +800,7 @@
         },
         "employeeId": {
           "type": "string",
-          "format": "uuid",
-          "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          "format": "uuid"
         },
         "status": {
           "type": "string",
@@ -878,19 +822,16 @@
         },
         "from": {
           "type": "string",
-          "format": "date",
-          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          "format": "date"
         },
         "to": {
           "type": "string",
-          "format": "date",
-          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          "format": "date"
         }
       }
     },
     "LeaveBalanceQuery": {
       "title": "LeaveBalanceQuery",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "year": {
@@ -902,7 +843,6 @@
     },
     "UpdateOnboardingTask": {
       "title": "UpdateOnboardingTask",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "status": {
@@ -919,14 +859,12 @@
         },
         "dueDate": {
           "type": "string",
-          "format": "date",
-          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))$"
+          "format": "date"
         }
       }
     },
     "OnboardingSearchQuery": {
       "title": "OnboardingSearchQuery",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "page": {
@@ -954,7 +892,6 @@
     },
     "PayrollReportQuery": {
       "title": "PayrollReportQuery",
-      "$schema": "https://json-schema.org/draft/2020-12/schema",
       "type": "object",
       "properties": {
         "month": {
@@ -964,6 +901,1340 @@
       },
       "required": [
         "month"
+      ]
+    },
+    "UserRef": {
+      "title": "UserRef",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ]
+    },
+    "EmployeeRef": {
+      "title": "EmployeeRef",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "employeeCode": {
+          "type": "string"
+        },
+        "firstName": {
+          "type": "string"
+        },
+        "lastName": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "employeeCode",
+        "firstName",
+        "lastName"
+      ]
+    },
+    "Employee": {
+      "title": "Employee",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "employeeCode": {
+          "type": "string"
+        },
+        "firstName": {
+          "type": "string"
+        },
+        "lastName": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "phone": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "dateOfBirth": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "jobTitle": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "joiningDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "employmentType": {
+          "type": "string",
+          "enum": [
+            "FULL_TIME",
+            "PART_TIME",
+            "CONTRACT",
+            "INTERN"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "ACTIVE",
+            "PROBATION",
+            "ARCHIVED"
+          ]
+        },
+        "department": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "manager": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EmployeeRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "employeeCode",
+        "firstName",
+        "lastName",
+        "email",
+        "phone",
+        "dateOfBirth",
+        "jobTitle",
+        "location",
+        "joiningDate",
+        "employmentType",
+        "status",
+        "department",
+        "manager",
+        "version",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "EmployeePage": {
+      "title": "EmployeePage",
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Employee"
+          }
+        },
+        "total": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "page": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "pageSize": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "items",
+        "total",
+        "page",
+        "pageSize"
+      ]
+    },
+    "LeaveProblem": {
+      "title": "LeaveProblem",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "END_BEFORE_START",
+            "CROSSES_YEAR",
+            "TOO_LONG",
+            "TOO_FAR_IN_PAST",
+            "BEFORE_JOINING",
+            "NO_WORKING_DAYS",
+            "OVERLAP",
+            "INSUFFICIENT_BALANCE",
+            "EMPLOYEE_ARCHIVED"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ]
+    },
+    "LeaveBalance": {
+      "title": "LeaveBalance",
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "ANNUAL",
+            "SICK",
+            "CASUAL",
+            "UNPAID"
+          ]
+        },
+        "year": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "entitled": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "used": {
+          "type": "number"
+        },
+        "pending": {
+          "type": "number"
+        },
+        "available": {
+          "type": [
+            "number",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "type",
+        "year",
+        "entitled",
+        "used",
+        "pending",
+        "available"
+      ]
+    },
+    "LeavePreview": {
+      "title": "LeavePreview",
+      "type": "object",
+      "properties": {
+        "workingDays": {
+          "type": "number"
+        },
+        "nonWorkingDays": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "date": {
+                "type": "string",
+                "format": "date"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "date",
+              "reason"
+            ]
+          }
+        },
+        "balance": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LeaveBalance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "balanceAfter": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "problems": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LeaveProblem"
+          }
+        }
+      },
+      "required": [
+        "workingDays",
+        "nonWorkingDays",
+        "balance",
+        "balanceAfter",
+        "problems"
+      ]
+    },
+    "LeaveRequest": {
+      "title": "LeaveRequest",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "employee": {
+          "$ref": "#/$defs/EmployeeRef"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "ANNUAL",
+            "SICK",
+            "CASUAL",
+            "UNPAID"
+          ]
+        },
+        "startDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "endDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "days": {
+          "type": "number"
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PENDING",
+            "APPROVED",
+            "REJECTED",
+            "CANCELLED"
+          ]
+        },
+        "requestedBy": {
+          "$ref": "#/$defs/UserRef"
+        },
+        "decidedBy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UserRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decidedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "decisionComment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "canDecide": {
+          "type": "boolean"
+        },
+        "canCancel": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "employee",
+        "type",
+        "startDate",
+        "endDate",
+        "days",
+        "reason",
+        "status",
+        "requestedBy",
+        "decidedBy",
+        "decidedAt",
+        "decisionComment",
+        "createdAt",
+        "canDecide",
+        "canCancel"
+      ]
+    },
+    "LeaveRequestPage": {
+      "title": "LeaveRequestPage",
+      "type": "object",
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/LeaveRequest"
+          }
+        },
+        "total": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "page": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "pageSize": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      },
+      "required": [
+        "items",
+        "total",
+        "page",
+        "pageSize"
+      ]
+    },
+    "AttendanceAnomaly": {
+      "title": "AttendanceAnomaly",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "MISSING_RECORD",
+            "ABSENT_WITHOUT_LEAVE",
+            "WORKED_ON_LEAVE",
+            "LATE_CHECK_IN",
+            "MISSING_CHECK_OUT",
+            "SHORT_DAY"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ]
+    },
+    "AttendanceEntry": {
+      "title": "AttendanceEntry",
+      "type": "object",
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "PRESENT",
+            "HALF_DAY",
+            "ABSENT"
+          ]
+        },
+        "checkIn": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "checkOut": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "checkIn",
+        "checkOut"
+      ]
+    },
+    "AttendanceDay": {
+      "title": "AttendanceDay",
+      "type": "object",
+      "properties": {
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "employee": {
+          "$ref": "#/$defs/EmployeeRef"
+        },
+        "dayStatus": {
+          "type": "string",
+          "enum": [
+            "PRESENT",
+            "HALF_DAY",
+            "ABSENT",
+            "ON_LEAVE",
+            "HOLIDAY",
+            "WEEKEND",
+            "MISSING",
+            "NOT_EMPLOYED",
+            "UPCOMING"
+          ]
+        },
+        "record": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "PRESENT",
+                    "HALF_DAY",
+                    "ABSENT"
+                  ]
+                },
+                "checkIn": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "checkOut": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "SYSTEM",
+                    "MANUAL",
+                    "CORRECTION"
+                  ]
+                },
+                "correctionReason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "status",
+                "checkIn",
+                "checkOut",
+                "id",
+                "source",
+                "correctionReason"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workedMinutes": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "leave": {
+          "anyOf": [
+            {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "type": {
+                  "type": "string",
+                  "enum": [
+                    "ANNUAL",
+                    "SICK",
+                    "CASUAL",
+                    "UNPAID"
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "type"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "holiday": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "anomalies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AttendanceAnomaly"
+          }
+        },
+        "pendingCorrection": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "date",
+        "employee",
+        "dayStatus",
+        "record",
+        "workedMinutes",
+        "leave",
+        "holiday",
+        "anomalies",
+        "pendingCorrection"
+      ]
+    },
+    "MonthlyAttendanceRow": {
+      "title": "MonthlyAttendanceRow",
+      "type": "object",
+      "properties": {
+        "employee": {
+          "$ref": "#/$defs/EmployeeRef"
+        },
+        "workingDays": {
+          "type": "number"
+        },
+        "present": {
+          "type": "number"
+        },
+        "halfDays": {
+          "type": "number"
+        },
+        "absent": {
+          "type": "number"
+        },
+        "onLeave": {
+          "type": "number"
+        },
+        "missing": {
+          "type": "number"
+        },
+        "anomalies": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "employee",
+        "workingDays",
+        "present",
+        "halfDays",
+        "absent",
+        "onLeave",
+        "missing",
+        "anomalies"
+      ]
+    },
+    "MonthlyAttendance": {
+      "title": "MonthlyAttendance",
+      "type": "object",
+      "properties": {
+        "month": {
+          "type": "string",
+          "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+        },
+        "workingDays": {
+          "type": "number"
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MonthlyAttendanceRow"
+          }
+        },
+        "anomalies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": {
+                "type": "string",
+                "enum": [
+                  "MISSING_RECORD",
+                  "ABSENT_WITHOUT_LEAVE",
+                  "WORKED_ON_LEAVE",
+                  "LATE_CHECK_IN",
+                  "MISSING_CHECK_OUT",
+                  "SHORT_DAY"
+                ]
+              },
+              "message": {
+                "type": "string"
+              },
+              "date": {
+                "type": "string",
+                "format": "date"
+              },
+              "employee": {
+                "$ref": "#/$defs/EmployeeRef"
+              }
+            },
+            "required": [
+              "code",
+              "message",
+              "date",
+              "employee"
+            ]
+          }
+        },
+        "days": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/AttendanceDay"
+          }
+        }
+      },
+      "required": [
+        "month",
+        "workingDays",
+        "rows",
+        "anomalies"
+      ]
+    },
+    "OnboardingTask": {
+      "title": "OnboardingTask",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "PAPERWORK",
+            "DOCUMENTS",
+            "IT_SETUP",
+            "ORIENTATION",
+            "TEAM"
+          ]
+        },
+        "assignee": {
+          "type": "string",
+          "enum": [
+            "HR",
+            "MANAGER",
+            "EMPLOYEE",
+            "IT"
+          ]
+        },
+        "dueDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PENDING",
+            "DONE",
+            "SKIPPED"
+          ]
+        },
+        "requiredDocumentType": {
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "OFFER_LETTER",
+                "ID_PROOF",
+                "ADDRESS_PROOF",
+                "PAN_CARD",
+                "BANK_DETAILS",
+                "EDUCATION_CERTIFICATE",
+                "EXPERIENCE_LETTER",
+                "PHOTO",
+                "OTHER"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "completedBy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UserRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "notes": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "isOverdue": {
+          "type": "boolean"
+        },
+        "canUpdate": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "description",
+        "category",
+        "assignee",
+        "dueDate",
+        "status",
+        "requiredDocumentType",
+        "completedAt",
+        "completedBy",
+        "notes",
+        "isOverdue",
+        "canUpdate"
+      ]
+    },
+    "OnboardingProgress": {
+      "title": "OnboardingProgress",
+      "type": "object",
+      "properties": {
+        "total": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "done": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "skipped": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "overdue": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "percent": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "total",
+        "done",
+        "skipped",
+        "overdue",
+        "percent"
+      ]
+    },
+    "MissingInfo": {
+      "title": "MissingInfo",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ]
+    },
+    "EmployeeOnboarding": {
+      "title": "EmployeeOnboarding",
+      "type": "object",
+      "properties": {
+        "employee": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "employeeCode": {
+              "type": "string"
+            },
+            "firstName": {
+              "type": "string"
+            },
+            "lastName": {
+              "type": "string"
+            },
+            "jobTitle": {
+              "type": "string"
+            },
+            "joiningDate": {
+              "type": "string",
+              "format": "date"
+            },
+            "departmentName": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "employeeCode",
+            "firstName",
+            "lastName",
+            "jobTitle",
+            "joiningDate",
+            "departmentName"
+          ]
+        },
+        "started": {
+          "type": "boolean"
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/OnboardingTask"
+          }
+        },
+        "progress": {
+          "$ref": "#/$defs/OnboardingProgress"
+        },
+        "missingInfo": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/MissingInfo"
+          }
+        },
+        "canStart": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "employee",
+        "started",
+        "tasks",
+        "progress",
+        "missingInfo",
+        "canStart"
+      ]
+    },
+    "EmployeeDocument": {
+      "title": "EmployeeDocument",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "employee": {
+          "$ref": "#/$defs/EmployeeRef"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "OFFER_LETTER",
+            "ID_PROOF",
+            "ADDRESS_PROOF",
+            "PAN_CARD",
+            "BANK_DETAILS",
+            "EDUCATION_CERTIFICATE",
+            "EXPERIENCE_LETTER",
+            "PHOTO",
+            "OTHER"
+          ]
+        },
+        "fileName": {
+          "type": "string"
+        },
+        "mimeType": {
+          "type": "string"
+        },
+        "sizeBytes": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PENDING",
+            "VERIFIED",
+            "FLAGGED"
+          ]
+        },
+        "uploadedBy": {
+          "$ref": "#/$defs/UserRef"
+        },
+        "uploadedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "reviewedBy": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UserRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reviewedAt": {
+          "anyOf": [
+            {
+              "type": "string",
+              "format": "date-time"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reviewNote": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "canReview": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "employee",
+        "type",
+        "fileName",
+        "mimeType",
+        "sizeBytes",
+        "status",
+        "uploadedBy",
+        "uploadedAt",
+        "reviewedBy",
+        "reviewedAt",
+        "reviewNote",
+        "canReview"
+      ]
+    },
+    "PayrollFlag": {
+      "title": "PayrollFlag",
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "string",
+          "enum": [
+            "MISSING_BANK_DETAILS",
+            "BANK_DETAILS_FLAGGED",
+            "MISSING_PAN",
+            "UNRESOLVED_ATTENDANCE",
+            "PENDING_LEAVE",
+            "PENDING_CORRECTION"
+          ]
+        },
+        "message": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "message"
+      ]
+    },
+    "PayrollRow": {
+      "title": "PayrollRow",
+      "type": "object",
+      "properties": {
+        "employee": {
+          "$ref": "#/$defs/EmployeeRef"
+        },
+        "department": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "employmentType": {
+          "type": "string",
+          "enum": [
+            "FULL_TIME",
+            "PART_TIME",
+            "CONTRACT",
+            "INTERN"
+          ]
+        },
+        "joiningDate": {
+          "type": "string",
+          "format": "date"
+        },
+        "newJoiner": {
+          "type": "boolean"
+        },
+        "workingDays": {
+          "type": "number"
+        },
+        "daysWorked": {
+          "type": "number"
+        },
+        "paidLeaveDays": {
+          "type": "number"
+        },
+        "unpaidLeaveDays": {
+          "type": "number"
+        },
+        "unexplainedDays": {
+          "type": "number"
+        },
+        "lopDays": {
+          "type": "number"
+        },
+        "payableDays": {
+          "type": "number"
+        },
+        "flags": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PayrollFlag"
+          }
+        }
+      },
+      "required": [
+        "employee",
+        "department",
+        "employmentType",
+        "joiningDate",
+        "newJoiner",
+        "workingDays",
+        "daysWorked",
+        "paidLeaveDays",
+        "unpaidLeaveDays",
+        "unexplainedDays",
+        "lopDays",
+        "payableDays",
+        "flags"
+      ]
+    },
+    "PayrollChange": {
+      "title": "PayrollChange",
+      "type": "object",
+      "properties": {
+        "employee": {
+          "$ref": "#/$defs/EmployeeRef"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "JOINED",
+            "EXITED",
+            "CHANGED"
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "by": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/UserRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "employee",
+        "kind",
+        "summary",
+        "date",
+        "by"
+      ]
+    },
+    "PayrollReport": {
+      "title": "PayrollReport",
+      "type": "object",
+      "properties": {
+        "month": {
+          "type": "string"
+        },
+        "through": {
+          "type": "string",
+          "format": "date"
+        },
+        "complete": {
+          "type": "boolean"
+        },
+        "summary": {
+          "type": "object",
+          "properties": {
+            "headcount": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "newJoiners": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "exits": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "employeesWithFlags": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "lopDays": {
+              "type": "number"
+            }
+          },
+          "required": [
+            "headcount",
+            "newJoiners",
+            "exits",
+            "employeesWithFlags",
+            "lopDays"
+          ]
+        },
+        "rows": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PayrollRow"
+          }
+        },
+        "changes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PayrollChange"
+          }
+        }
+      },
+      "required": [
+        "month",
+        "through",
+        "complete",
+        "summary",
+        "rows",
+        "changes"
       ]
     }
   }

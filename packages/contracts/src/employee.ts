@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isoDate, paginationQuery } from './common.js';
+import { isoDate, isoDateTime, paginationQuery } from './common.js';
 
 export const EMPLOYEE_STATUSES = ['ACTIVE', 'PROBATION', 'ARCHIVED'] as const;
 export type EmployeeStatus = (typeof EMPLOYEE_STATUSES)[number];
@@ -74,29 +74,27 @@ export type EmployeeSearchQuery = z.output<typeof employeeSearchSchema>;
 /** Query params a client sends; the API fills in defaults. */
 export type EmployeeSearchParams = Partial<EmployeeSearchQuery>;
 
-export interface EmployeeRef {
-  id: string;
-  employeeCode: string;
-  firstName: string;
-  lastName: string;
-}
+export const employeeRefSchema = z.object({
+  id: z.uuid(),
+  employeeCode: z.string(),
+  firstName: z.string(),
+  lastName: z.string(),
+});
+export type EmployeeRef = z.infer<typeof employeeRefSchema>;
 
-export interface Employee {
-  id: string;
-  employeeCode: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  phone: string | null;
-  dateOfBirth: string | null;
-  jobTitle: string;
-  location: string;
-  joiningDate: string;
-  employmentType: EmploymentType;
-  status: EmployeeStatus;
-  department: { id: string; name: string } | null;
-  manager: EmployeeRef | null;
-  version: number;
-  createdAt: string;
-  updatedAt: string;
-}
+export const employeeSchema = employeeRefSchema.extend({
+  email: z.string(),
+  phone: z.string().nullable(),
+  dateOfBirth: isoDate.nullable(),
+  jobTitle: z.string(),
+  location: z.string(),
+  joiningDate: isoDate,
+  employmentType: z.enum(EMPLOYMENT_TYPES),
+  status: z.enum(EMPLOYEE_STATUSES),
+  department: z.object({ id: z.uuid(), name: z.string() }).nullable(),
+  manager: employeeRefSchema.nullable(),
+  version: z.number().int(),
+  createdAt: isoDateTime,
+  updatedAt: isoDateTime,
+});
+export type Employee = z.infer<typeof employeeSchema>;

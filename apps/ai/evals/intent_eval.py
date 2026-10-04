@@ -60,9 +60,7 @@ def load_cases(path: Path) -> list[EvalCase]:
     return cases
 
 
-async def run_intent_eval(
-    llm: LLMClient, cases: Iterable[EvalCase], *, today: date
-) -> EvalReport:
+async def run_intent_eval(llm: LLMClient, cases: Iterable[EvalCase], *, today: date) -> EvalReport:
     """Run cases sequentially and report intent accuracy and micro entity P/R."""
     rows: list[EvalRow] = []
     true_positive = false_positive = false_negative = 0
@@ -110,9 +108,7 @@ def _entity_items(entities: Entities) -> set[tuple[str, str]]:
     items: set[tuple[str, str]] = set()
     for field, value in values.items():
         if isinstance(value, list):
-            items.update(
-                (field, str(item).casefold()) for item in cast(list[object], value)
-            )
+            items.update((field, str(item).casefold()) for item in cast(list[object], value))
         elif value not in (None, ""):
             items.add((field, str(value).casefold()))
     return items
