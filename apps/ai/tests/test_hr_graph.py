@@ -12,8 +12,9 @@ import respx
 from langgraph.checkpoint.memory import InMemorySaver
 
 from app.hr_client import HrApiClient, SessionUser
-from graphs.hr_agent import HrContext, build_hr_graph
+from graphs.hr_agent import HrContext, build_hr_graph, clarification_question
 from graphs.runner import HrGraph, RunOutcome, resume_run, start_run
+from intent.schema import ModelParse, ParsedRequest
 from llm.fake import FakeLLM
 from tests.hr_data import (
     ARUN,
@@ -156,6 +157,7 @@ async def test_missing_information_pauses_for_the_user_and_resumes_the_same_thre
     rahul = employee(ref(RAHUL_ID, "Rahul", "Sharma", "EMP002"), jobTitle="Engineering Manager")
     respx.get(f"{BASE_URL}/employees", params={"q": "Rahul"}).respond(json=page(rahul))
     request = "Onboard Priya as a Software Engineer reporting to Rahul"
+    QUESTION = "What is Priya's joining date and work location?"
     llm = FakeLLM(
         [
             parse(
@@ -178,8 +180,8 @@ async def test_missing_information_pauses_for_the_user_and_resumes_the_same_thre
     waiting = await start_run(graph, "t2", request, context(http, llm), first)
 
     assert waiting.status == "waiting"
-    # joining_date is the first required field missing for onboarding.
-    assert waiting.question == {"type": "clarification", "question": "When does Priya join?"}
+    # One question for everything still missing, built by code.
+    assert waiting.question == {"type": "clarification", "question": QUESTION}
     assert first.nodes() == ["understand"]
     assert first.items[-1]["event"] == "waiting"
 
@@ -188,12 +190,65 @@ async def test_missing_information_pauses_for_the_user_and_resumes_the_same_thre
 
     assert done.status == "completed"
     assert done.values["clarifications"] == [
-        {"question": "When does Priya join?", "answer": "12 October, in Bangalore"}
+        {"question": QUESTION, "answer": "12 October, in Bangalore"}
     ]
     assert second.nodes()[:2] == ["clarify", "understand"]
     # The second parse saw the original request plus the answer.
     reparse = llm.calls[1].messages[-1].content or ""
-    assert request in reparse and "Answer: 12 October, in Bangalore" in reparse
+    assert request in reparse and "A: 12 October, in Bangalore" in reparse
+
+
+@pytest.mark.parametrize(
+    ("parsed", "question"),
+    [
+        (
+            parse("onboard_employee", location="Bangalore", question="Name, title and date?"),
+            "What is the new employee's name, job title and joining date?",
+        ),
+        (
+            parse(
+                "onboard_employee",
+                job_title="SDE 1",
+                joining_date="2026-10-05",
+                location="Bangalore",
+                question="What is the new employee's name, job title and joining date?",
+            ),
+            "What is the new employee's full name?",
+        ),
+        (parse("request_leave", leave_type="SICK"), "Which date (or first date) is this for?"),
+        (parse("update_employee", people=["Arun"], question="Which field?"), "Which field?"),
+    ],
+    ids=["several missing", "only the name left", "one field", "nothing missing"],
+)
+def test_the_question_asks_only_for_what_is_still_missing(parsed: str, question: str) -> None:
+    assert (
+        clarification_question(ParsedRequest.from_model(ModelParse.model_validate_json(parsed)))
+        == question
+    )
+
+
+async def test_a_change_keeps_asking_for_required_details_then_stops_without_planning(
+    http: httpx.AsyncClient, graph: HrGraph
+) -> None:
+    no_name = parse(
+        "onboard_employee", job_title="SDE 1", joining_date="2026-10-05", location="Bangalore"
+    )
+    llm = FakeLLM([parse("onboard_employee", location="Bangalore"), *[no_name] * 4])
+    request = "Onboard new employee in bangalore"
+
+    waiting = await start_run(graph, "t9", request, context(http, llm), Events())
+    questions: list[str] = []
+    for answer in ["SDE 1, today", "not sure", "later", "skip"]:
+        assert waiting.status == "waiting" and waiting.question is not None
+        questions.append(waiting.question["question"])
+        waiting = await resume_run(graph, "t9", answer, context(http, llm), Events())
+
+    # Past the usual two questions: a change isn't planned without its required details.
+    assert questions[1:] == ["What is the new employee's full name?"] * 3
+    assert waiting.status == "completed"
+    assert waiting.values["route"] == "decline"
+    assert waiting.answer is not None and "without the name" in waiting.answer
+    assert len(llm.calls) == 5  # only parses: no plan, no respond
 
 
 @respx.mock

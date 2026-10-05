@@ -48,7 +48,7 @@ def test_builds_system_prompt_with_context_and_leaves_the_request_untouched() ->
     messages, ref = build_intent_messages(request, today=TUESDAY, role="MANAGER")
 
     system, user = messages
-    assert str(ref) == "intent@2"
+    assert str(ref) == "intent@3"
     assert system.role == "system" and user.role == "user"
     assert user.content == request
     content = system.content or ""

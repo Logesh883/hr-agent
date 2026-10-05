@@ -24,30 +24,34 @@ export function RunTimeline({ events, live }: { events: StreamedEvent[]; live: b
 
   return (
     <div className="space-y-2">
-      <ol className="space-y-2">
-        {shown.map(({ id, event }) => {
+      <ol className="relative">
+        {shown.map(({ id, event }, i) => {
           const line = describeEvent(event);
+          const last = i === shown.length - 1 && !live;
           return (
-            <li key={id} className="flex gap-3 text-sm">
-              <span className={cn("mt-1.5 size-2 shrink-0 rounded-full", dots[line.tone])} />
+            <li key={id} className="relative flex gap-3 pb-3 text-sm last:pb-0">
+              {!last && <span className="absolute top-3 bottom-0 left-[3.5px] w-px bg-border" aria-hidden />}
+              <span className={cn("relative mt-1.5 size-2 shrink-0 rounded-full ring-2 ring-card", dots[line.tone])} />
               <div className="min-w-0">
-                <span className={cn(line.tone === "neutral" && "text-muted-foreground")}>{line.text}</span>
+                <span className={cn("text-[13px]", line.tone === "neutral" && "text-muted-foreground")}>
+                  {line.text}
+                </span>
                 {line.detail && (
-                  <p className="text-xs break-words text-muted-foreground">{line.detail}</p>
+                  <p className="line-clamp-2 text-xs break-words text-muted-foreground">{line.detail}</p>
                 )}
               </div>
             </li>
           );
         })}
         {live && (
-          <li className="flex items-center gap-3 text-sm text-muted-foreground">
+          <li className="relative flex items-center gap-3 text-sm text-muted-foreground">
             <span className="size-2 animate-pulse rounded-full bg-sky-500" />
             Working…
           </li>
         )}
       </ol>
       {events.some((e) => QUIET.has(e.event.event)) && (
-        <Button variant="link" size="sm" className="h-auto px-0" onClick={() => setAll(!all)}>
+        <Button variant="link" size="sm" className="h-auto px-0 text-xs" onClick={() => setAll(!all)}>
           {all ? "Hide graph steps" : "Show every graph step"}
         </Button>
       )}

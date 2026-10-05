@@ -83,6 +83,9 @@ Route = Literal["clarify", "decline", "simple", "plan"]
 Status = Literal["answered", "failed"]
 
 MAX_CLARIFICATIONS = 2
+# A change with required details still missing keeps asking for them, up to this many
+# questions in all, instead of planning without them. Then it stops and says what's missing.
+MAX_MISSING_QUESTIONS = 4
 MAX_PLAN_ATTEMPTS = 2
 POLICY_TOP_K = 4
 # Characters of one step's result shown to the respond prompt.
@@ -104,12 +107,24 @@ POLICY_INTENTS = WRITE_INTENTS | {Intent.POLICY_QUESTION, Intent.LEAVE_BALANCE}
 # What to ask when the parser found a required field missing (REQUIRED_FIELDS).
 FIELD_QUESTIONS = {
     "people": "Who is this about?",
+    "new_hire": "What is the new employee's full name?",
     "job_title": "What is {person}'s job title?",
     "joining_date": "When does {person} join?",
     "location": "Which office or city will {person} work from?",
     "department": "Which department is {person} joining?",
     "leave_type": "Which type of leave: annual, sick, casual or unpaid?",
     "start_date": "Which date (or first date) is this for?",
+}
+GENERIC_QUESTION = "Could you give me a bit more detail about what you need?"
+# How a missing field reads inside one combined question ("What is X's job title and ...").
+FIELD_NOUNS = {
+    "people": "name",
+    "job_title": "job title",
+    "joining_date": "joining date",
+    "location": "work location",
+    "department": "department",
+    "leave_type": "leave type",
+    "start_date": "date",
 }
 
 DECLINE_ANSWER = (
@@ -251,8 +266,11 @@ def traced(name: str, node: Node) -> Node:
 
 def request_with_clarifications(state: HrState) -> str:
     lines = [state["request"]]
-    for item in state.get("clarifications", []):
-        lines.append(f"(Asked: {item['question']} Answer: {item['answer']})")
+    clarifications = state.get("clarifications", [])
+    if clarifications:
+        lines.append("Follow-up answers from the requester:")
+    for item in clarifications:
+        lines += [f"Q: {item['question']}", f"A: {item['answer']}"]
     return "\n".join(lines)
 
 
@@ -270,7 +288,12 @@ async def understand(state: HrState, runtime: Runtime[HrContext]) -> dict[str, A
     if reason is not None:
         # The role can't do this at all: say so now, don't plan, ask or retry.
         return update | {"route": "decline", "refusal": reason}
-    return update | {"route": choose_route(state, parsed, ctx)}
+    route = choose_route(state, parsed, ctx)
+    if route == "plan" and parsed.missing_fields and parsed.intent in WRITE_INTENTS:
+        # Out of questions and still missing something required: planning without it
+        # would only end in a blocked plan. Say what's needed instead.
+        return update | {"route": "decline", "refusal": missing_answer(parsed)}
+    return update | {"route": route}
 
 
 def choose_route(state: HrState, parsed: ParsedRequest, ctx: HrContext) -> Route:
@@ -280,6 +303,8 @@ def choose_route(state: HrState, parsed: ParsedRequest, ctx: HrContext) -> Route
         return "decline"  # clearly not an HR request: asking again won't help
     if asked < ctx.max_clarifications and should_ask(parsed):
         return "clarify"
+    if parsed.intent in WRITE_INTENTS and parsed.missing_fields and asked < MAX_MISSING_QUESTIONS:
+        return "clarify"  # a change can't go ahead without its required details
     if parsed.intent is Intent.UNKNOWN:
         return "decline"
     if parsed.intent in WRITE_INTENTS or len(parsed.entities.people) > 1:
@@ -309,13 +334,37 @@ def route_after_understand(state: HrState) -> str:
 
 
 def clarification_question(parsed: ParsedRequest) -> str:
-    if parsed.clarifying_question:
-        return parsed.clarifying_question
-    person = parsed.entities.people[0] if parsed.entities.people else "they"
-    for name in parsed.missing_fields:
-        if name in FIELD_QUESTIONS:
-            return FIELD_QUESTIONS[name].format(person=person)
-    return "Could you give me a bit more detail about what you need?"
+    """Ask for exactly what's still missing; the model's own question only when nothing is.
+
+    Code builds the question from `missing_fields`, so after a partial answer the user is
+    asked for the rest, not the model's first question again word for word.
+    """
+    missing = [name for name in parsed.missing_fields if name in FIELD_NOUNS]
+    if not missing:
+        return parsed.clarifying_question or GENERIC_QUESTION
+    onboarding = parsed.intent is Intent.ONBOARD_EMPLOYEE
+    known = parsed.entities.people[0] if parsed.entities.people else None
+    if len(missing) == 1:
+        key = "new_hire" if onboarding and missing[0] == "people" else missing[0]
+        fallback = "the new employee" if onboarding else "they"
+        return FIELD_QUESTIONS[key].format(person=known or fallback)
+    if onboarding:
+        subject = f"{known}'s" if known else "the new employee's"
+        return f"What is {subject} {_and_list([FIELD_NOUNS[name] for name in missing])}?"
+    return " ".join(FIELD_QUESTIONS[name].format(person=known or "they") for name in missing)
+
+
+def missing_answer(parsed: ParsedRequest) -> str:
+    fields = parsed.missing_fields
+    nouns = _and_list([FIELD_NOUNS.get(name, name.replace("_", " ")) for name in fields])
+    return (
+        f"I can't go ahead without the {nouns}, so nothing was changed. "
+        "Start a new request that includes them."
+    )
+
+
+def _and_list(items: list[str]) -> str:
+    return items[0] if len(items) == 1 else f"{', '.join(items[:-1])} and {items[-1]}"
 
 
 async def clarify(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
