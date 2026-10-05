@@ -103,7 +103,7 @@ function Conversation({ run, events }: { run: RunView; events: StreamedEvent[] }
     <Card className="gap-0 py-0">
       <CardContent className="space-y-5 p-5">
         <YouSay>{run.request}</YouSay>
-        {progress?.clarifications.map((c, i) => (
+        {exchangesOf(events, progress).map((c, i) => (
           <div key={i} className="space-y-5">
             <AgentSays>{c.question}</AgentSays>
             <YouSay>{c.answer}</YouSay>
@@ -144,6 +144,43 @@ function Conversation({ run, events }: { run: RunView; events: StreamedEvent[] }
       </CardContent>
     </Card>
   );
+}
+
+/**
+ * Every question the run asked and how it was answered, from its events: clarifications,
+ * missing values (with a refused answer and the retry), choices and approvals. Falls back
+ * to the checkpoint's clarifications while the events are still loading.
+ */
+function exchangesOf(events: StreamedEvent[], progress: RunProgress | null | undefined) {
+  const exchanges: { question: string; answer: string }[] = [];
+  let asked: string | null = null;
+  for (const { event } of events) {
+    if (event.event === "waiting") asked = event.question;
+    if (event.event === "run_resumed" && asked !== null) {
+      const answer = answerText(event.answer);
+      if (answer) exchanges.push({ question: asked, answer });
+      asked = null;
+    }
+  }
+  return exchanges.length > 0 || events.length > 0 ? exchanges : (progress?.clarifications ?? []);
+}
+
+const DECISION_LABELS: Record<string, string> = {
+  approve: "Approved",
+  approved: "Approved",
+  reject: "Rejected",
+  rejected: "Rejected",
+  edit: "Approved with changes",
+};
+
+function answerText(answer: unknown): string | null {
+  if (typeof answer === "string") return answer;
+  if (answer && typeof answer === "object" && "decision" in answer) {
+    const { decision, comment } = answer as { decision: string; comment?: string | null };
+    const label = DECISION_LABELS[decision] ?? humanize(decision);
+    return `${label}${comment ? `: ${comment}` : ""}`;
+  }
+  return null;
 }
 
 type OutcomeTone = "ok" | "warn" | "bad";

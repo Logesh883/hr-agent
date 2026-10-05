@@ -1,6 +1,29 @@
 # AI HR Operations Employee
 
-Portfolio project: an agentic AI employee for HR back-office operations. The system converts natural-language HR requests into validated, auditable workflows using policy RAG, typed tools, verification, and human approval.
+An agentic AI employee for HR back-office work. Ask in plain words ("onboard a new SDE 1 in Bangalore, reporting to Rahul"). The agent works out what you mean, asks for anything missing, plans the steps, looks up the company's HR policy, and waits for your approval before changing anything sensitive. It then makes the change through typed, permission-checked tools, checks that the records really say what was intended, and logs every change it made in the audit trail.
+
+![Demo: the agent asks for the missing details, holds the risky step for approval, creates the employee, verifies, and the audit log shows the AI's changes](docs/demo/hr-agent-demo.gif)
+
+## Highlights
+
+- **Asks instead of guessing.** Required details are decided in code, not by the model. The agent asks only for what is still missing, and never invents names, emails or IDs.
+- **Human in the loop.** Each write carries a risk level from one shared policy. Medium and high risk steps pause on an approval card that shows exactly what will change, before and after. You can approve, reject with a reason, or edit the values.
+- **The LLM never holds permissions.** The agent acts with the signed-in user's token, through a typed Tool API (`POST /tools/:name`). Role checks and business rules stay in the HR API.
+- **Grounded in policy.** RAG over HR policies (pgvector, heading-aware chunking, reranking), with the cited passages shown in the UI.
+- **Verifies its work, recovers from failures.** It reads the records back after each write, retries under the same idempotency key, and undoes a change when a later step fails.
+- **Guardrails and evaluation.** Prompt-injection fencing, run budgets, a self-approval guard, a red-team eval set, and an end-to-end eval gate in CI.
+- **Auditable.** Every change records who made it, whether the AI did it on someone's behalf, and which run and tool.
+
+## Stack
+
+| Layer | Tech |
+| --- | --- |
+| Web | Next.js 16, React, TanStack Query, shadcn/ui, Auth.js |
+| HR API | NestJS, Prisma, PostgreSQL 16 + pgvector, JWT, RBAC with data scopes |
+| AI agent | Python 3.12, FastAPI, LangGraph (checkpointed, interruptible), Pydantic, uv |
+| LLMs | Any OpenAI-compatible provider (Groq, OpenRouter) or Gemini; Gemini embeddings |
+| Contracts | Zod schemas shared by web and API, exported to JSON Schema and generated Pydantic for the agent |
+| Quality | Jest e2e, pytest (340+ tests), pyright, ESLint, eval harness, GitHub Actions |
 
 The project is split into two scopes that share one monorepo and one database:
 
@@ -18,6 +41,8 @@ HR admin ──► Next.js web app ──► NestJS HR API ──► PostgreSQL 
 
 > **Core principle:** the AI does not merely answer questions. It understands intent, plans work, retrieves applicable policy, calls approved tools, verifies the resulting state, and records what happened. Permissions and business rules stay in the HR API, outside the LLM.
 
+How each part of the agent was built, module by module, with the design decisions and what went wrong along the way: [docs/ai-modules](docs/ai-modules/README.md).
+
 ## Local Development
 
 Requires Node 22+, pnpm 10, Docker, and [uv](https://docs.astral.sh/uv/) for the AI service (`uv python install 3.12`).
@@ -28,8 +53,16 @@ cp .env.example .env    # then set JWT_SECRET and AUTH_SECRET: openssl rand -bas
 pnpm db:up              # PostgreSQL 16 + pgvector on localhost:5433
 pnpm db:migrate         # apply Prisma migrations
 pnpm db:seed            # demo company: people, leave, documents, onboarding, attendance, policies
+pnpm db:migrate:ai      # the AI service's tables (runs, approvals, policy chunks)
 pnpm dev                # web on http://localhost:3000, api on http://localhost:4000, ai on http://localhost:8000
 ```
+
+The HR app works without any AI key. For the assistant, add free keys to `.env`:
+
+- `GROQ_API_KEY` from [console.groq.com](https://console.groq.com/keys), used for chat with `LLM_MODEL=openai/gpt-oss-120b`. OpenRouter also works; see `.env.example`.
+- `GEMINI_API_KEY` from [aistudio.google.com](https://aistudio.google.com/apikey), used for policy embeddings.
+
+Then, with `pnpm dev` running, index the policies once: `cd apps/ai && uv run hr-ai ingest`. Sign in as `hr@hr.local` and open **AI assistant**.
 
 Demo logins (password `Password123!`), also shown as one-click buttons on the sign-in page:
 
