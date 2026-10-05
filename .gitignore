@@ -26,5 +26,5 @@ __pycache__/
 packages/db/src/generated/
 
 # Uploaded files (local storage driver)
-storage/
-storage-test/
+/storage/
+/storage-test/
