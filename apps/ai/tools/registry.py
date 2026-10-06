@@ -42,6 +42,10 @@ class ToolRegistry:
     def names(self) -> list[str]:
         return list(self._tools)
 
+    @property
+    def tools(self) -> list[Tool[Any]]:
+        return list(self._tools.values())
+
     def get(self, name: str) -> Tool[Any] | None:
         return self._tools.get(name)
 

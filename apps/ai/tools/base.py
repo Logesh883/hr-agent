@@ -109,6 +109,9 @@ class ToolResult(BaseModel):
         return self.error_kind in TRANSIENT
 
 
+type Shape = dict[str, "Shape"] | list["Shape"] | None
+
+
 @dataclass(frozen=True)
 class Tool[ArgsT: ToolInput]:
     name: str
@@ -121,6 +124,10 @@ class Tool[ArgsT: ToolInput]:
     # Write tools: what would change, as {"summary", "before", "after"}, computed without
     # changing anything. Shown for approval (A6.4).
     preview: Callable[[ToolContext, ArgsT], Awaitable[dict[str, Any]]] | None = None
+    # The fields of the tool's result, so a plan's `$sN.…` references can be checked
+    # before anything runs: {"key": shape} for an object, [shape] for a list, None for a
+    # value. The planner is shown it too. None: not declared, references aren't checked.
+    returns: "Shape" = None
 
     def spec(self) -> ToolSpec:
         """The OpenAI-format definition sent to the model."""

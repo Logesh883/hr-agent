@@ -21,7 +21,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 from app.hr_client import HrApiError
 from contracts import generated as api
-from tools.base import Risk, Tool, ToolContext, ToolError, ToolInput
+from tools.base import Risk, Shape, Tool, ToolContext, ToolError, ToolInput
 from tools.hr_read import EmployeeId, LeaveType
 
 EMPLOYEE_FIELDS = ("job_title", "location", "phone", "employment_type", "status")
@@ -518,7 +518,12 @@ async def list_departments(ctx: ToolContext, args: ListDepartmentsInput) -> dict
 
 
 def _write(
-    name: str, description: str, model: type[ToolInput], run: Any, preview: Any
+    name: str,
+    description: str,
+    model: type[ToolInput],
+    run: Any,
+    preview: Any,
+    returns: Shape = None,
 ) -> Tool[Any]:
     return Tool(
         name=name,
@@ -527,7 +532,21 @@ def _write(
         run=run,
         preview=preview,
         risk=Risk.WRITE,
+        returns=returns,
     )
+
+
+EMPLOYEE: dict[str, Shape] = {
+    "id": None,
+    "version": None,
+    "name": None,
+    "employee_code": None,
+    "job_title": None,
+    "department": None,
+    "manager": None,
+    "location": None,
+    "status": None,
+}
 
 
 WRITE_TOOLS: list[Tool[Any]] = [
@@ -538,6 +557,7 @@ WRITE_TOOLS: list[Tool[Any]] = [
         CreateEmployeeInput,
         create_employee,
         preview_create_employee,
+        returns=EMPLOYEE,
     ),
     _write(
         "update_employee",
@@ -581,6 +601,7 @@ WRITE_TOOLS: list[Tool[Any]] = [
         CreateLeaveInput,
         create_leave_request,
         preview_create_leave,
+        returns={"id": None, "status": None, "days": None},
     ),
     _write(
         "approve_leave",
@@ -617,4 +638,5 @@ DEPARTMENT_TOOL: Tool[Any] = Tool(
     description="List the active departments with their ids (to resolve a department name).",
     input_model=ListDepartmentsInput,
     run=list_departments,
+    returns={"departments": [{"id": None, "name": None, "code": None, "employees": None}]},
 )

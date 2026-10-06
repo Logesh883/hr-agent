@@ -15,7 +15,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field, TypeAdapter
 
 from contracts import generated as api
-from tools.base import Tool, ToolContext, ToolError, ToolInput
+from tools.base import Shape, Tool, ToolContext, ToolError, ToolInput
 
 LeaveType = Literal["ANNUAL", "SICK", "CASUAL", "UNPAID"]
 EmployeeId = Annotated[
@@ -49,6 +49,9 @@ class _PersonLike(Protocol):
     def first_name(self) -> str: ...
     @property
     def last_name(self) -> str: ...
+
+
+PERSON: dict[str, Shape] = {"id": None, "name": None, "employee_code": None}
 
 
 def _person(ref: _PersonLike) -> dict[str, Any]:
@@ -355,6 +358,12 @@ READ_TOOLS: list[Tool[Any]] = [
         "the user names a person; never guess an id.",
         input_model=SearchEmployeeInput,
         run=search_employee,
+        returns={
+            "total": None,
+            "employees": [
+                PERSON | {"job_title": None, "department": None, "location": None, "status": None}
+            ],
+        },
     ),
     Tool(
         name="get_employee",
@@ -386,6 +395,22 @@ READ_TOOLS: list[Tool[Any]] = [
         "user's decision.",
         input_model=ListLeaveInput,
         run=list_leave_requests,
+        returns={
+            "total": None,
+            "requests": [
+                {
+                    "id": None,
+                    "employee": PERSON,
+                    "type": None,
+                    "start_date": None,
+                    "end_date": None,
+                    "days": None,
+                    "status": None,
+                    "reason": None,
+                    "decided_by": None,
+                }
+            ],
+        },
     ),
     Tool(
         name="get_attendance_month",

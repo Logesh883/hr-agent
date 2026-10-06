@@ -10,7 +10,9 @@ Code, not the model, decides whether a plan may run (`check_plan`):
   label is checked against it, never trusted); M5 runs read tools only;
 - arguments use the tool's own field names, required fields are present, and every
   literal value passes the tool's validation;
-- references point at an earlier step.
+- references point at an earlier step, and at a field that step's tool returns (when the
+  tool declares its result shape: a planner guessing `leave_requests` for `requests`
+  would otherwise only fail when the step runs, after the lookups).
 
 And at run time (`resolve_references`), a reference through a list only resolves when the
 list has exactly one item: "the first of three Rahuls" is a guess, so it stops and asks.
@@ -25,7 +27,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from tools.base import Risk, ToolInput
+from tools.base import Risk, Shape, ToolInput
 from tools.registry import ToolRegistry, validation_summary
 
 MAX_PLAN_STEPS = 8
@@ -76,6 +78,8 @@ def check_plan(plan: Plan, registry: ToolRegistry, *, allow_writes: bool = False
     if len(plan.steps) > MAX_PLAN_STEPS:
         problems.append(f"The plan has {len(plan.steps)} steps; at most {MAX_PLAN_STEPS}.")
     seen: set[str] = set()
+    # Result shapes of earlier steps whose tool declares one.
+    shapes: dict[str, Shape] = {}
     for step in plan.steps:
         where = f"{step.id} ({step.tool})"
         if step.id in seen:
@@ -96,12 +100,18 @@ def check_plan(plan: Plan, registry: ToolRegistry, *, allow_writes: bool = False
             problems.append(f"{where}: changes data, and this agent can only read for now.")
         if step.risk != tool.risk.value:
             problems.append(f"{where}: marked {step.risk}, but the tool is {tool.risk.value}.")
-        problems.extend(f"{where}: {p}" for p in _check_arguments(step, tool.input_model, seen))
+        problems.extend(
+            f"{where}: {p}" for p in _check_arguments(step, tool.input_model, seen, shapes)
+        )
         seen.add(step.id)
+        if tool.returns is not None:
+            shapes[step.id] = tool.returns
     return problems
 
 
-def _check_arguments(step: PlanStep, model: type[ToolInput], earlier: set[str]) -> list[str]:
+def _check_arguments(
+    step: PlanStep, model: type[ToolInput], earlier: set[str], shapes: dict[str, Shape]
+) -> list[str]:
     problems: list[str] = []
     fields = model.model_fields
     for name in step.arguments.keys() - fields.keys():
@@ -117,6 +127,10 @@ def _check_arguments(step: PlanStep, model: type[ToolInput], earlier: set[str]) 
         if reference is not None:
             if reference[0] not in earlier:
                 problems.append(f"'{name}' refers to {reference[0]}, which isn't an earlier step.")
+            elif reference[0] in shapes:
+                problem = _path_problem(reference[1], shapes[reference[0]])
+                if problem:
+                    problems.append(f"'{name}': {value} {problem}")
             continue
         if value == ASK_USER:
             continue  # asked for before the step runs
@@ -126,6 +140,24 @@ def _check_arguments(step: PlanStep, model: type[ToolInput], earlier: set[str]) 
         except ValidationError as error:
             problems.append(f"'{name}': {validation_summary(error)}")
     return problems
+
+
+def _path_problem(path: list[str], shape: Shape) -> str | None:
+    """Why `path` doesn't fit a tool's declared result shape, or None if it does."""
+    node = shape
+    for depth, part in enumerate(path):
+        so_far = ".".join(path[:depth]) or "the result"
+        if isinstance(node, list):
+            if not part.isdigit():
+                return f"needs a list position after '{so_far}' (e.g. '{so_far}.0'), not '{part}'."
+            node = node[0] if node else None
+        elif isinstance(node, dict):
+            if part not in node:
+                return f"has no '{part}': {so_far} has {', '.join(sorted(node))}."
+            node = node[part]
+        else:
+            return f"goes past a value: '{so_far}' has no fields."
+    return None
 
 
 def _reference(value: Any) -> tuple[str, list[str]] | None:

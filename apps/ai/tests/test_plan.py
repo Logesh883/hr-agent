@@ -3,6 +3,7 @@
 import pytest
 
 from agent.ask import READ_REGISTRY
+from graphs.hr_agent import PLAN_REGISTRY, _tool_line  # pyright: ignore[reportPrivateUsage]
 from graphs.plan import (
     Plan,
     PlanStep,
@@ -52,6 +53,59 @@ def test_check_plan_reports_each_problem_for_the_planner(bad: PlanStep, problem:
     problems = check_plan(plan(bad), READ_REGISTRY)
 
     assert any(problem in p for p in problems), problems
+
+
+def test_a_reference_to_a_field_the_tool_doesnt_return_is_caught_before_running() -> None:
+    # Run 08a8a0a3: the planner guessed `leave_requests`; list_leave_requests returns
+    # `requests`. Unchecked, s3 was skipped only after s1 and s2 had run, and the run
+    # "completed" without approving anything.
+    guessed = plan(
+        step("s1", "search_employee", query="Neha"),
+        step("s2", "list_leave_requests", status="PENDING", employee_id="$s1.employees.0.id"),
+        step("s3", "approve_leave", risk="write", leave_request_id="$s2.leave_requests.0.id"),
+    )
+
+    assert check_plan(guessed, PLAN_REGISTRY, allow_writes=True) == [
+        "s3 (approve_leave): 'leave_request_id': $s2.leave_requests.0.id has no "
+        "'leave_requests': the result has requests, total."
+    ]
+    fixed = guessed.model_copy(deep=True)
+    fixed.steps[2].arguments["leave_request_id"] = "$s2.requests.0.id"
+    assert check_plan(fixed, PLAN_REGISTRY, allow_writes=True) == []
+
+
+@pytest.mark.parametrize(
+    ("reference", "problem"),
+    [
+        ("$s1.employees.id", "needs a list position after 'employees' (e.g. 'employees.0')"),
+        ("$s1.employees.0.uuid", "has no 'uuid': employees.0 has department, employee_code, id"),
+        ("$s1.total.id", "goes past a value: 'total' has no fields."),
+    ],
+)
+def test_reference_paths_follow_the_declared_result_shape(reference: str, problem: str) -> None:
+    bad = plan(
+        step("s1", "search_employee", query="Sneha"),
+        step("s2", "get_leave_balances", employee_id=reference),
+    )
+
+    (found,) = check_plan(bad, READ_REGISTRY)
+    assert problem in found, found
+
+
+def test_references_into_a_tool_without_a_declared_shape_are_left_to_run_time() -> None:
+    undeclared = plan(
+        step("s1", "get_employee", employee_id=SNEHA_ID),
+        step("s2", "get_leave_balances", employee_id="$s1.anything.0.id"),
+    )
+
+    assert check_plan(undeclared, READ_REGISTRY) == []
+
+
+def test_the_planner_is_shown_what_each_tool_returns() -> None:
+    line = _tool_line(PLAN_REGISTRY.get("list_leave_requests"))  # pyright: ignore[reportArgumentType]
+
+    assert ' Returns: {"total": null, "requests": [{"id": null, "employee": ' in line
+    assert "Returns:" not in _tool_line(PLAN_REGISTRY.get("get_employee"))  # pyright: ignore[reportArgumentType]
 
 
 def test_empty_and_oversized_plans_are_rejected() -> None:

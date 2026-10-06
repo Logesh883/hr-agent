@@ -426,11 +426,7 @@ async def plan(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
         user_name=user.name,
         role=user.role,
         employee_id=user.employee_id or "none (this account has no employee record)",
-        tools="\n".join(
-            f"- {spec['function']['name']}: {spec['function']['description']} "
-            f"Arguments: {json.dumps(spec['function']['parameters'])}"
-            for spec in ctx.registry.specs()
-        ),
+        tools="\n".join(_tool_line(tool) for tool in ctx.registry.tools),
     )
     parts = [
         f"Request: {request_with_clarifications(state)}",
@@ -479,6 +475,16 @@ async def plan(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:
         "plan_attempts": attempts,
         "usage": usage,
     }
+
+
+def _tool_line(tool: Tool[Any]) -> str:
+    """One tool for the planner: what it does, its arguments, and (when declared) the
+    fields of its result, which is what `$sN.…` references may point at."""
+    spec = tool.spec()["function"]
+    line = f"- {spec['name']}: {spec['description']} Arguments: {json.dumps(spec['parameters'])}"
+    if tool.returns is not None:
+        line += f" Returns: {json.dumps(tool.returns)}"
+    return line
 
 
 async def validate_plan(state: HrState, runtime: Runtime[HrContext]) -> dict[str, Any]:

@@ -428,3 +428,54 @@ def test_only_needed_questions_are_asked(parsed: str, asks: bool) -> None:
     from intent.schema import ModelParse, ParsedRequest
 
     assert should_ask(ParsedRequest.from_model(ModelParse.model_validate_json(parsed))) is asks
+
+
+@respx.mock
+async def test_a_guessed_result_field_is_re_planned_and_the_approval_is_asked_for(
+    http: httpx.AsyncClient, graph: HrGraph
+) -> None:
+    # Run 08a8a0a3 replayed: the first plan references `leave_requests` (list_leave_requests
+    # returns `requests`). It used to run the lookups, skip the approval and "complete";
+    # now it's sent back to the planner before anything runs.
+    from tests.test_failures import leave
+
+    pending = leave()
+    respx.get(f"{BASE_URL}/employees", params={"q": "Sneha"}).respond(json=page(SNEHA))
+    respx.get(f"{BASE_URL}/leave-requests").respond(json=page(pending))
+    respx.get(f"{BASE_URL}/leave-requests/{pending['id']}").respond(json=pending)
+
+    def approval_plan(reference: str) -> str:
+        draft = json.loads(
+            plan_json(
+                ("s1", "search_employee", {"query": "Sneha"}),
+                (
+                    "s2",
+                    "list_leave_requests",
+                    {"view": "approvals", "status": "PENDING", "employee_id": "$s1.employees.0.id"},
+                ),
+                ("s3", "approve_leave", {"leave_request_id": reference}),
+                goal="Approve Sneha's pending leave",
+            )
+        )
+        draft["steps"][2]["risk"] = "write"
+        return json.dumps(draft)
+
+    llm = FakeLLM(
+        [
+            parse("approve_leave", people=["Sneha"]),
+            approval_plan("$s2.leave_requests.0.id"),
+            approval_plan("$s2.requests.0.id"),
+        ]
+    )
+    events = Events()
+
+    waiting = await start_run(graph, "guess", "Approve Sneha leave", context(http, llm), events)
+
+    assert events.nodes()[2:6] == ["plan", "validate_plan", "plan", "validate_plan"]
+    retry_prompt = " ".join(m.content or "" for m in llm.calls[2].messages)
+    assert "$s2.leave_requests.0.id has no 'leave_requests': the result has requests" in (
+        retry_prompt
+    )
+    assert waiting.status == "waiting"
+    assert waiting.question is not None and waiting.question["type"] == "approval"
+    assert waiting.question["arguments"] == {"leave_request_id": pending["id"]}
